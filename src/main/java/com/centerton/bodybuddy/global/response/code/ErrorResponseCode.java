@@ -16,6 +16,7 @@ public enum ErrorResponseCode implements BaseResponseCode {
     NOT_FOUND_ENDPOINT("GLOBAL_404", RESOURCE_NOT_FOUND, "존재하지 않는 앤드포인트입니다. 요청 URL을 확인해주세요."),
     UNSUPPORTED_HTTP_METHOD("GLOBAL_405", METHOD_NOT_ALLOWED, "지원하지 않는 메소드입니다."),
     RESOURCE_CONFLICT("GLOBAL_409", STATE_CONFLICT, "이미 존재하거나 충돌하는 리소스입니다."),
+    IDEMPOTENCY_KEY_REUSED("GLOBAL_409_IDEMPOTENCY", STATE_CONFLICT, "같은 Idempotency-Key가 이미 다른 사용자 생성에 사용되었습니다."),
     REQUEST_ENTITY_TOO_LARGE("GLOBAL_413", PAYLOAD_TOO_LARGE, "요청 크기가 허용된 범위를 초과했습니다."),
     INVALID_MEDIA_TYPE("GLOBAL_415", UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 미디어 타입입니다."),
     INVALID_INPUT_VALUE("GLOBAL_422", VALIDATION_ERROR, "요청 값이 유효하지 않습니다."),
