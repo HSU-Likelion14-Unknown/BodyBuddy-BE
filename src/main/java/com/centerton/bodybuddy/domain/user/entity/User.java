@@ -30,8 +30,9 @@ public class User extends BaseEntity {
     @Column(name = "birth_year")
     private Short birthYear;
 
-    @Column(name = "gender", length = 10)
-    private String gender;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gender", length = 20)
+    private Gender gender;
 
     @Column(name = "allergies", length = 500)
     private String allergies;
