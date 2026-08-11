@@ -26,7 +26,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse<?>> handleMethodArgumentNotValidException(MethodArgumentNotValidException e) {
         log.error("MethodArgumentNotValidException : {}", e.getMessage(), e);
-        ErrorResponse<?> errorResponse = ErrorResponse.of(ErrorResponseCode.INVALID_HTTP_MESSAGE_BODY, e.getFieldError().getDefaultMessage());
+        ErrorResponse<?> errorResponse = ErrorResponse.of(ErrorResponseCode.INVALID_INPUT_VALUE, e.getFieldError().getDefaultMessage());
         return ResponseEntity.status(errorResponse.getHttpStatus()).body(errorResponse);
     }
 
@@ -34,7 +34,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BindException.class)
     public ResponseEntity<ErrorResponse<?>>handleBindException(BindException e) {
         log.error("BindException : {}", e.getMessage(), e);
-        ErrorResponse<?> errorResponse = ErrorResponse.of(ErrorResponseCode.INVALID_HTTP_MESSAGE_BODY, e.getFieldError().getDefaultMessage());
+        ErrorResponse<?> errorResponse = ErrorResponse.of(ErrorResponseCode.INVALID_INPUT_VALUE, e.getFieldError().getDefaultMessage());
         return ResponseEntity.status(errorResponse.getHttpStatus()).body(errorResponse);
     }
 
