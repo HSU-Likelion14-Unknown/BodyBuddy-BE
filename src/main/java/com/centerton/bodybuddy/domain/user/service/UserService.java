@@ -1,8 +1,7 @@
 package com.centerton.bodybuddy.domain.user.service;
 
 import com.centerton.bodybuddy.domain.auth.util.AuthValidator;
-import com.centerton.bodybuddy.domain.user.dto.OnboardingReq;
-import com.centerton.bodybuddy.domain.user.dto.OnboardingRes;
+import com.centerton.bodybuddy.domain.user.dto.*;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import com.centerton.bodybuddy.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +35,19 @@ public class UserService {
                 .gender(user.getGender())
                 .allergyCodes(req.getAllergyCodes())
                 .dislikedFoods(req.getDislikedFoods())
+                .onboardingCompletedAt(user.getOnboardingCompletedAt())
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public UserInfoRes getMyInfo(String authorization) {
+        User user = AuthValidator.validateAndGetUser(authorization, userRepository);
+
+        return UserInfoRes.builder()
+                .userId(user.getUserId())
+                .nickname(user.getNickname())
+                .birthYear(user.getBirthYear())
+                .gender(user.getGender())
                 .onboardingCompletedAt(user.getOnboardingCompletedAt())
                 .build();
     }
