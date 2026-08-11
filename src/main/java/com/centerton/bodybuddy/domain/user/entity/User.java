@@ -28,7 +28,7 @@ public class User extends BaseEntity {
     private String nickname;
 
     @Column(name = "birth_year")
-    private Short birthYear;
+    private Integer birthYear;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "gender", length = 20)
@@ -42,4 +42,15 @@ public class User extends BaseEntity {
 
     @Column(name = "onboarding_completed_at")
     private LocalDateTime onboardingCompletedAt;
+
+    public void updateOnboarding(String nickname, Integer birthYear, Gender gender,
+                                 String allergies, String dislikedFoods,
+                                 LocalDateTime onboardingCompletedAt) {
+        this.nickname = nickname;
+        this.birthYear = birthYear;
+        this.gender = gender;
+        this.allergies = allergies;
+        this.dislikedFoods = dislikedFoods;
+        this.onboardingCompletedAt = onboardingCompletedAt;
+    }
 }
