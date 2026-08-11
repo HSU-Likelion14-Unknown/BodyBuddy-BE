@@ -1,7 +1,6 @@
 package com.centerton.bodybuddy.domain.user.controller;
 
-import com.centerton.bodybuddy.domain.user.dto.OnboardingReq;
-import com.centerton.bodybuddy.domain.user.dto.OnboardingRes;
+import com.centerton.bodybuddy.domain.user.dto.*;
 import com.centerton.bodybuddy.domain.user.service.UserService;
 import com.centerton.bodybuddy.global.response.SuccessResponse;
 import jakarta.validation.Valid;
@@ -23,6 +22,14 @@ public class UserController {
             @Valid @RequestBody OnboardingReq req
     ) {
         OnboardingRes response = userService.saveOnboarding(authorization, req);
+        return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<SuccessResponse<UserInfoRes>> getMyInfo(
+            @RequestHeader("Authorization") String authorization
+    ) {
+        UserInfoRes response = userService.getMyInfo(authorization);
         return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
     }
 }
