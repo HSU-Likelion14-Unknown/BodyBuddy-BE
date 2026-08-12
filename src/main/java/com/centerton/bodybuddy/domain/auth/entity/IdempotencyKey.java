@@ -19,6 +19,6 @@ public class IdempotencyKey extends BaseEntity {
     @Column(name = "idempotency_key", length = 64)
     private String idempotencyKey;
 
-    @Column(name = "user_id", nullable = false, length = 64)
+    @Column(name = "user_id", nullable = false, length = 36)
     private String userId;
 }

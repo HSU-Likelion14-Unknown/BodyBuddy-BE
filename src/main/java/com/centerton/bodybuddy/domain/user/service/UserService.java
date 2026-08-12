@@ -24,8 +24,8 @@ public class UserService {
                 req.getNickname(),
                 req.getBirthYear(),
                 req.getGender(),
-                String.join(",", req.getAllergyCodes()),
-                String.join(",", req.getDislikedFoods()),
+                req.getAllergyCodes(),
+                req.getDislikedFoods(),
                 LocalDateTime.now()
         );
 
