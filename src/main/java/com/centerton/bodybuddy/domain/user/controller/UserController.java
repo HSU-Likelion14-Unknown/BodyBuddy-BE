@@ -32,4 +32,13 @@ public class UserController {
         UserInfoRes response = userService.getMyInfo(authorization);
         return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
     }
+
+    @PatchMapping("/me/preferences")
+    public ResponseEntity<SuccessResponse<PreferenceRes>> updatePreferences(
+            @RequestHeader("Authorization") String authorization,
+            @Valid @RequestBody PreferenceReq req
+    ) {
+        PreferenceRes response = userService.updatePreferences(authorization, req);
+        return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
+    }
 }

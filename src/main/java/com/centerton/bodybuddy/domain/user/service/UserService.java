@@ -51,4 +51,19 @@ public class UserService {
                 .onboardingCompletedAt(user.getOnboardingCompletedAt())
                 .build();
     }
+
+    @Transactional
+    public PreferenceRes updatePreferences(String authorization, PreferenceReq req) {
+        User user = AuthValidator.validateAndGetUser(authorization, userRepository);
+
+        user.updatePreferences(
+                String.join(",", req.getAllergyCodes()),
+                String.join(",", req.getDislikedFoods())
+        );
+
+        return PreferenceRes.builder()
+                .allergyCodes(req.getAllergyCodes())
+                .dislikedFoods(req.getDislikedFoods())
+                .build();
+    }
 }

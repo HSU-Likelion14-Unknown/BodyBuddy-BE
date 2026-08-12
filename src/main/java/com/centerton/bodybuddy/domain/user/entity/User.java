@@ -53,4 +53,10 @@ public class User extends BaseEntity {
         this.dislikedFoods = dislikedFoods;
         this.onboardingCompletedAt = onboardingCompletedAt;
     }
+
+    public void updatePreferences(String allergies, String dislikedFoods) {
+        this.allergies = allergies;
+        this.dislikedFoods = dislikedFoods;
+    }
+
 }
