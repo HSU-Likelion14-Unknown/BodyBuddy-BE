@@ -58,9 +58,6 @@ public class Meal extends BaseEntity {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
-
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
@@ -106,7 +103,4 @@ public class Meal extends BaseEntity {
         this.eatenAt = eatenAt;
     }
 
-    public void delete(LocalDateTime deletedAt) {
-        this.deletedAt = deletedAt;
-    }
 }

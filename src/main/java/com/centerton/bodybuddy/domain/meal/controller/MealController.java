@@ -48,7 +48,6 @@ public class MealController {
     @DeleteMapping("/{mealId}")
     public ResponseEntity<Void> deleteMeal(
             @RequestHeader("Authorization") String authorization,
-            @RequestHeader("Idempotency-Key") String idempotencyKey,
             @PathVariable String mealId
     ) {
         mealService.deleteMeal(authorization, mealId);

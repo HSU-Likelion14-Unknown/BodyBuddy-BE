@@ -13,4 +13,6 @@ public interface AiAnalysisRunRepository extends JpaRepository<AiAnalysisRun, St
             String mealId,
             AnalysisStatus status
     );
+
+    void deleteAllByMealMealId(String mealId);
 }

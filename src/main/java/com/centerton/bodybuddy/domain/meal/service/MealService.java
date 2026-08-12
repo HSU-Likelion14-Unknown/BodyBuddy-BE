@@ -138,9 +138,10 @@ public class MealService {
         User user = authenticatedUser(authorization);
         Meal meal = mealRepository.findByMealIdAndUserUserId(mealId, user.getUserId())
                 .orElseThrow(() -> new BaseException(ErrorResponseCode.MEAL_NOT_FOUND));
-        if (meal.getDeletedAt() == null) {
-            meal.delete(LocalDateTime.now(ZoneOffset.UTC));
-        }
+        analysisRunRepository.deleteAllByMealMealId(mealId);
+        mealItemRepository.deleteAllByMealMealId(mealId);
+        nutritionSummaryRepository.findById(mealId).ifPresent(nutritionSummaryRepository::delete);
+        mealRepository.delete(meal);
     }
 
     private User authenticatedUser(String authorization) {
@@ -154,7 +155,7 @@ public class MealService {
     }
 
     private Meal activeMeal(String mealId, String userId) {
-        return mealRepository.findByMealIdAndUserUserIdAndDeletedAtIsNull(mealId, userId)
+        return mealRepository.findByMealIdAndUserUserId(mealId, userId)
                 .orElseThrow(() -> new BaseException(ErrorResponseCode.MEAL_NOT_FOUND));
     }
 
