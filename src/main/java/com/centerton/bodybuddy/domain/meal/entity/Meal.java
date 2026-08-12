@@ -102,6 +102,10 @@ public class Meal extends BaseEntity {
         this.confirmedAt = confirmedAt;
     }
 
+    public void updateEatenAt(LocalDateTime eatenAt) {
+        this.eatenAt = eatenAt;
+    }
+
     public void delete(LocalDateTime deletedAt) {
         this.deletedAt = deletedAt;
     }

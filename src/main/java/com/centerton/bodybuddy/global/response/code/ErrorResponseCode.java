@@ -8,6 +8,7 @@ import static com.centerton.bodybuddy.global.constant.StaticValue.*;
 @Getter
 @AllArgsConstructor
 public enum ErrorResponseCode implements BaseResponseCode {
+    MEAL_ITEMS_INVALID("MEAL_422_ITEMS", VALIDATION_ERROR, "음식 또는 섭취량을 확인해 주세요."),
     ONBOARDING_NOT_COMPLETED("USER_409_ONBOARDING", STATE_CONFLICT, "온보딩을 먼저 완료해 주세요."),
     MEAL_NOT_FOUND("MEAL_404", RESOURCE_NOT_FOUND, "식사 기록을 찾을 수 없습니다."),
     INVALID_MEAL_STATUS("MEAL_409_STATUS", STATE_CONFLICT, "현재 식사 상태에서는 요청을 처리할 수 없습니다."),

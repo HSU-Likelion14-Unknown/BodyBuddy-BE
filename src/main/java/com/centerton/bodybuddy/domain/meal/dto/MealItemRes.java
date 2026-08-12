@@ -13,22 +13,35 @@ public class MealItemRes {
     private String mealItemId;
     private String foodId;
     private String foodName;
-    private BigDecimal amount;
-    private String amountUnit;
+    private BigDecimal consumedAmount;
+    private String consumedUnit;
     private BigDecimal confidence;
     private MealItemSource source;
-    private NutritionRes nutrition;
+    private BigDecimal caloriesKcal;
+    private BigDecimal carbohydrateG;
+    private BigDecimal proteinG;
+    private BigDecimal fatG;
+    private BigDecimal fiberG;
+    private BigDecimal sodiumMg;
 
     public static MealItemRes from(MealItem item) {
-        return MealItemRes.builder()
+        NutritionRes nutrition = NutritionRes.from(item.getNutrition());
+        MealItemResBuilder builder = MealItemRes.builder()
                 .mealItemId(item.getMealItemId())
                 .foodId(item.getFoodId())
                 .foodName(item.getFoodName())
-                .amount(item.getAmount())
-                .amountUnit(item.getAmountUnit())
+                .consumedAmount(item.getAmount())
+                .consumedUnit(item.getAmountUnit())
                 .confidence(item.getConfidence())
-                .source(item.getSource())
-                .nutrition(NutritionRes.from(item.getNutrition()))
-                .build();
+                .source(item.getSource());
+        if (nutrition != null) {
+            builder.caloriesKcal(nutrition.getCaloriesKcal())
+                    .carbohydrateG(nutrition.getCarbohydrateG())
+                    .proteinG(nutrition.getProteinG())
+                    .fatG(nutrition.getFatG())
+                    .fiberG(nutrition.getFiberG())
+                    .sodiumMg(nutrition.getSodiumMg());
+        }
+        return builder.build();
     }
 }

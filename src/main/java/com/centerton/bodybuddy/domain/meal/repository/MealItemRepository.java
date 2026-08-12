@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface MealItemRepository extends JpaRepository<MealItem, String> {
     List<MealItem> findAllByMealMealIdOrderBySortOrderAsc(String mealId);
+
+    void deleteAllByMealMealId(String mealId);
 }

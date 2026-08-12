@@ -2,11 +2,10 @@ package com.centerton.bodybuddy.domain.meal.controller;
 
 import com.centerton.bodybuddy.domain.meal.dto.MealAcceptedRes;
 import com.centerton.bodybuddy.domain.meal.dto.MealConfirmRes;
+import com.centerton.bodybuddy.domain.meal.dto.MealConfirmReq;
 import com.centerton.bodybuddy.domain.meal.dto.MealDetailRes;
 import com.centerton.bodybuddy.domain.meal.dto.TextMealCreateReq;
 import com.centerton.bodybuddy.domain.meal.service.MealService;
-import com.centerton.bodybuddy.global.exception.BaseException;
-import com.centerton.bodybuddy.global.response.code.ErrorResponseCode;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -40,11 +39,10 @@ public class MealController {
     @PostMapping("/{mealId}/confirm")
     public ResponseEntity<MealConfirmRes> confirmMeal(
             @RequestHeader("Authorization") String authorization,
-            @RequestHeader("If-Match") String ifMatch,
-            @PathVariable String mealId
+            @PathVariable String mealId,
+            @Valid @RequestBody MealConfirmReq request
     ) {
-        long expectedVersion = parseVersion(ifMatch);
-        return ResponseEntity.ok(mealService.confirmMeal(authorization, mealId, expectedVersion));
+        return ResponseEntity.ok(mealService.confirmMeal(authorization, mealId, request));
     }
 
     @DeleteMapping("/{mealId}")
@@ -57,11 +55,4 @@ public class MealController {
         return ResponseEntity.noContent().build();
     }
 
-    private long parseVersion(String ifMatch) {
-        try {
-            return Long.parseLong(ifMatch.replace("\"", "").trim());
-        } catch (NumberFormatException exception) {
-            throw new BaseException(ErrorResponseCode.INVALID_INPUT_VALUE);
-        }
-    }
 }
