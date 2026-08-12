@@ -8,6 +8,10 @@ import static com.centerton.bodybuddy.global.constant.StaticValue.*;
 @Getter
 @AllArgsConstructor
 public enum ErrorResponseCode implements BaseResponseCode {
+    ONBOARDING_NOT_COMPLETED("USER_409_ONBOARDING", STATE_CONFLICT, "온보딩을 먼저 완료해 주세요."),
+    MEAL_NOT_FOUND("MEAL_404", RESOURCE_NOT_FOUND, "식사 기록을 찾을 수 없습니다."),
+    INVALID_MEAL_STATUS("MEAL_409_STATUS", STATE_CONFLICT, "현재 식사 상태에서는 요청을 처리할 수 없습니다."),
+    MEAL_VERSION_CONFLICT("MEAL_409_VERSION", STATE_CONFLICT, "식사 기록이 변경되었습니다. 최신 정보를 다시 조회해 주세요."),
     BAD_REQUEST_ERROR("GLOBAL_400_1", BAD_REQUEST, "잘못된 요청입니다."),
     INVALID_HTTP_MESSAGE_BODY("GLOBAL_400_2", BAD_REQUEST, "HTTP 요청 바디의 형식이 잘못되었습니다."),
     INVALID_HTTP_MESSAGE_PARAMETER("GLOBAL_400_3", BAD_REQUEST, "HTTP 요청 파라미터 형식이 잘못되었습니다."),

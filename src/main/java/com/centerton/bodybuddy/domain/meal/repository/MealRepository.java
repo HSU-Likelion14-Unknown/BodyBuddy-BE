@@ -7,4 +7,6 @@ import java.util.Optional;
 
 public interface MealRepository extends JpaRepository<Meal, String> {
     Optional<Meal> findByMealIdAndUserUserIdAndDeletedAtIsNull(String mealId, String userId);
+
+    Optional<Meal> findByMealIdAndUserUserId(String mealId, String userId);
 }
