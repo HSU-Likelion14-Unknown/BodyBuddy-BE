@@ -59,8 +59,17 @@ public class User extends BaseEntity {
         this.onboardingCompletedAt = onboardingCompletedAt;
     }
 
-    public void updatePreferences(List<String> allergyCodes, List<String> dislikedFoods) {
-        this.allergyCodes = allergyCodes == null ? List.of() : List.copyOf(allergyCodes);
-        this.dislikedFoods = dislikedFoods == null ? List.of() : List.copyOf(dislikedFoods);
-    }
+    public void updatePreferences(
+        List<String> allergyCodes,
+        List<String> dislikedFoods
+) {
+    this.allergyCodes = allergyCodes == null
+            ? List.of()
+            : List.copyOf(allergyCodes);
+
+    this.dislikedFoods = dislikedFoods == null
+            ? List.of()
+            : List.copyOf(dislikedFoods);
+}
+
 }
