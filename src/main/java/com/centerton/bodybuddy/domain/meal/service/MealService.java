@@ -2,6 +2,8 @@ package com.centerton.bodybuddy.domain.meal.service;
 
 import com.centerton.bodybuddy.domain.analysis.entity.AiAnalysisRun;
 import com.centerton.bodybuddy.domain.analysis.entity.AnalysisRunType;
+import com.centerton.bodybuddy.domain.analysis.entity.AnalysisStatus;
+import com.centerton.bodybuddy.domain.analysis.entity.RecognitionResult;
 import com.centerton.bodybuddy.domain.analysis.repository.AiAnalysisRunRepository;
 import com.centerton.bodybuddy.domain.auth.util.AccessKeyGenerator;
 import com.centerton.bodybuddy.domain.auth.util.AuthValidator;
@@ -26,8 +28,6 @@ import java.time.ZoneOffset;
 @Service
 @RequiredArgsConstructor
 public class MealService {
-
-    private static final int POLL_AFTER_MS = 1000;
 
     private final UserRepository userRepository;
     private final MealRepository mealRepository;
@@ -57,8 +57,6 @@ public class MealService {
         return MealAcceptedRes.builder()
                 .mealId(meal.getMealId())
                 .status(meal.getStatus())
-                .analysis(toAnalysisRes(analysisRun))
-                .pollAfterMs(POLL_AFTER_MS)
                 .build();
     }
 
@@ -66,18 +64,18 @@ public class MealService {
     public MealDetailRes getMeal(String authorization, String mealId) {
         User user = authenticatedUser(authorization);
         Meal meal = activeMeal(mealId, user.getUserId());
-        AiAnalysisRun analysisRun = analysisRunRepository
-                .findFirstByMealMealIdOrderByStartedAtDesc(mealId)
+        RecognitionResult recognitionResult = analysisRunRepository
+                .findFirstByMealMealIdAndStatusOrderByStartedAtDesc(mealId, AnalysisStatus.SUCCEEDED)
+                .map(AiAnalysisRun::getNormalizedResponse)
                 .orElse(null);
 
         return MealDetailRes.builder()
                 .mealId(meal.getMealId())
-                .inputType(meal.getInputType())
-                .imageSource(meal.getImageSource())
                 .status(meal.getStatus())
-                .version(meal.getVersion())
                 .eatenAt(toUtc(meal.getEatenAt()))
-                .photoUrl(meal.getPhotoObjectKey())
+                .recognizedItems(recognitionResult == null || recognitionResult.getFoods() == null
+                        ? null
+                        : recognitionResult.getFoods().stream().map(RecognizedItemRes::from).toList())
                 .items(mealItemRepository.findAllByMealMealIdOrderBySortOrderAsc(mealId)
                         .stream()
                         .map(MealItemRes::from)
@@ -85,9 +83,7 @@ public class MealService {
                 .nutritionSummary(nutritionSummaryRepository.findById(mealId)
                         .map(NutritionSummaryRes::from)
                         .orElse(null))
-                .analysis(analysisRun == null ? null : toAnalysisRes(analysisRun))
-                .createdAt(toUtc(meal.getCreatedAt()))
-                .updatedAt(toUtc(meal.getUpdatedAt()))
+                .recommendation(null)
                 .build();
     }
 
@@ -141,13 +137,6 @@ public class MealService {
         if (meal.getVersion() == null || meal.getVersion() != expectedVersion) {
             throw new BaseException(ErrorResponseCode.MEAL_VERSION_CONFLICT);
         }
-    }
-
-    private AnalysisSummaryRes toAnalysisRes(AiAnalysisRun analysisRun) {
-        return AnalysisSummaryRes.builder()
-                .analysisRunId(analysisRun.getAnalysisRunId())
-                .status(analysisRun.getStatus())
-                .build();
     }
 
     private OffsetDateTime toUtc(LocalDateTime value) {

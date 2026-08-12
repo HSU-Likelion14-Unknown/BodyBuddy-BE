@@ -58,7 +58,7 @@ public class AiAnalysisRun {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "normalized_response", columnDefinition = "json")
-    private String normalizedResponse;
+    private RecognitionResult normalizedResponse;
 
     @Column(name = "error_code", length = 80)
     private String errorCode;

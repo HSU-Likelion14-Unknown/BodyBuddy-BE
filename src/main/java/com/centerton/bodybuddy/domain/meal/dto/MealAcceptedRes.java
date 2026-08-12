@@ -9,6 +9,4 @@ import lombok.Getter;
 public class MealAcceptedRes {
     private String mealId;
     private MealStatus status;
-    private AnalysisSummaryRes analysis;
-    private int pollAfterMs;
 }
