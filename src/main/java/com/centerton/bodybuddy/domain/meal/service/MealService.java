@@ -7,6 +7,8 @@ import com.centerton.bodybuddy.domain.analysis.entity.RecognitionResult;
 import com.centerton.bodybuddy.domain.analysis.repository.AiAnalysisRunRepository;
 import com.centerton.bodybuddy.domain.auth.util.AccessKeyGenerator;
 import com.centerton.bodybuddy.domain.auth.util.AuthValidator;
+import com.centerton.bodybuddy.domain.auth.entity.IdempotencyKey;
+import com.centerton.bodybuddy.domain.auth.repository.IdempotencyKeyRepository;
 import com.centerton.bodybuddy.domain.food.entity.FoodNutrition;
 import com.centerton.bodybuddy.domain.food.repository.FoodNutritionRepository;
 import com.centerton.bodybuddy.domain.meal.dto.*;
@@ -35,12 +37,15 @@ import java.util.function.Function;
 @RequiredArgsConstructor
 public class MealService {
 
+    private static final String TEXT_MEAL_CREATE = "TEXT_MEAL_CREATE";
+
     private final UserRepository userRepository;
     private final MealRepository mealRepository;
     private final MealItemRepository mealItemRepository;
     private final MealNutritionSummaryRepository nutritionSummaryRepository;
     private final AiAnalysisRunRepository analysisRunRepository;
     private final FoodNutritionRepository foodNutritionRepository;
+    private final IdempotencyKeyRepository idempotencyKeyRepository;
 
     @Transactional
     public MealAcceptedRes createTextMeal(String authorization, String idempotencyKey,
@@ -52,18 +57,56 @@ public class MealService {
         LocalDateTime eatenAtUtc = request.getEatenAt()
                 .withOffsetSameInstant(ZoneOffset.UTC)
                 .toLocalDateTime();
+        String fingerprint = AccessKeyGenerator.hash(
+                normalizedText + ":" + request.getEatenAt().toInstant()
+        );
+
+        MealAcceptedRes previousResponse = findIdempotentTextMeal(
+                idempotencyKey,
+                user,
+                fingerprint
+        );
+        if (previousResponse != null) {
+            return previousResponse;
+        }
 
         Meal meal = mealRepository.save(Meal.createText(user, normalizedText, eatenAtUtc));
-        String fingerprint = AccessKeyGenerator.hash(
-                idempotencyKey + ":" + normalizedText + ":" + request.getEatenAt()
-        );
         analysisRunRepository.save(
                 AiAnalysisRun.pending(meal, AnalysisRunType.INITIAL, fingerprint)
         );
+        idempotencyKeyRepository.save(IdempotencyKey.builder()
+                .idempotencyKey(idempotencyKey)
+                .userId(user.getUserId())
+                .operation(TEXT_MEAL_CREATE)
+                .requestFingerprint(fingerprint)
+                .resourceId(meal.getMealId())
+                .build());
 
         return MealAcceptedRes.builder()
                 .mealId(meal.getMealId())
                 .status(meal.getStatus())
+                .build();
+    }
+
+    private MealAcceptedRes findIdempotentTextMeal(String idempotencyKey, User user,
+                                                    String requestFingerprint) {
+        IdempotencyKey record = idempotencyKeyRepository.findById(idempotencyKey).orElse(null);
+        if (record == null) {
+            return null;
+        }
+        boolean sameRequest = user.getUserId().equals(record.getUserId())
+                && TEXT_MEAL_CREATE.equals(record.getOperation())
+                && requestFingerprint.equals(record.getRequestFingerprint())
+                && record.getResourceId() != null;
+        if (!sameRequest) {
+            throw new BaseException(ErrorResponseCode.IDEMPOTENCY_KEY_REUSED);
+        }
+
+        Meal previousMeal = mealRepository.findById(record.getResourceId())
+                .orElseThrow(() -> new BaseException(ErrorResponseCode.IDEMPOTENCY_KEY_REUSED));
+        return MealAcceptedRes.builder()
+                .mealId(previousMeal.getMealId())
+                .status(MealStatus.ANALYZING)
                 .build();
     }
 
