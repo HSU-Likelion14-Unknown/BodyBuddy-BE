@@ -6,8 +6,11 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Entity
 @Table(name = "users")
@@ -18,7 +21,7 @@ import java.time.LocalDateTime;
 public class User extends BaseEntity {
 
     @Id
-    @Column(name = "user_id", length = 64)
+    @Column(name = "user_id", length = 36)
     private String userId;
 
     @Column(nullable = false, unique = true, name = "access_key_hash", length = 64)
@@ -34,29 +37,39 @@ public class User extends BaseEntity {
     @Column(name = "gender", length = 20)
     private Gender gender;
 
-    @Column(name = "allergies", length = 500)
-    private String allergies;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "allergies", columnDefinition = "json")
+    private List<String> allergyCodes;
 
-    @Column(name = "disliked_foods", length = 500)
-    private String dislikedFoods;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "disliked_foods", columnDefinition = "json")
+    private List<String> dislikedFoods;
 
     @Column(name = "onboarding_completed_at")
     private LocalDateTime onboardingCompletedAt;
 
     public void updateOnboarding(String nickname, Integer birthYear, Gender gender,
-                                 String allergies, String dislikedFoods,
+                                 List<String> allergyCodes, List<String> dislikedFoods,
                                  LocalDateTime onboardingCompletedAt) {
         this.nickname = nickname;
         this.birthYear = birthYear;
         this.gender = gender;
-        this.allergies = allergies;
-        this.dislikedFoods = dislikedFoods;
+        this.allergyCodes = allergyCodes == null ? List.of() : List.copyOf(allergyCodes);
+        this.dislikedFoods = dislikedFoods == null ? List.of() : List.copyOf(dislikedFoods);
         this.onboardingCompletedAt = onboardingCompletedAt;
     }
 
-    public void updatePreferences(String allergies, String dislikedFoods) {
-        this.allergies = allergies;
-        this.dislikedFoods = dislikedFoods;
-    }
+    public void updatePreferences(
+        List<String> allergyCodes,
+        List<String> dislikedFoods
+) {
+    this.allergyCodes = allergyCodes == null
+            ? List.of()
+            : List.copyOf(allergyCodes);
+
+    this.dislikedFoods = dislikedFoods == null
+            ? List.of()
+            : List.copyOf(dislikedFoods);
+}
 
 }
