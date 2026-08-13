@@ -1,8 +1,7 @@
 package com.centerton.bodybuddy.domain.room.controller;
 
-import com.centerton.bodybuddy.domain.room.dto.RoomCreateReq;
-import com.centerton.bodybuddy.domain.room.dto.RoomCreateRes;
-import com.centerton.bodybuddy.domain.room.service.RoomService;
+import com.centerton.bodybuddy.domain.room.dto.*;
+import com.centerton.bodybuddy.domain.room.service.*;
 import com.centerton.bodybuddy.global.response.SuccessResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 public class RoomController {
 
     private final RoomService roomService;
+    private final RoomInviteService roomInviteService;
 
     @PostMapping
     public ResponseEntity<SuccessResponse<RoomCreateRes>> createRoom(
@@ -23,6 +23,15 @@ public class RoomController {
             @Valid @RequestBody RoomCreateReq req
     ) {
         RoomCreateRes response = roomService.createRoom(authorization, req);
+        return ResponseEntity.status(HttpStatus.CREATED).body(SuccessResponse.created(response));
+    }
+
+    @PostMapping("/{roomId}/invites")
+    public ResponseEntity<SuccessResponse<InviteCreateRes>> createInvite(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId
+    ) {
+        InviteCreateRes response = roomInviteService.createInvite(authorization, roomId);
         return ResponseEntity.status(HttpStatus.CREATED).body(SuccessResponse.created(response));
     }
 }
