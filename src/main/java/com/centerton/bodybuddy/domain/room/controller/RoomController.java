@@ -16,6 +16,7 @@ public class RoomController {
 
     private final RoomService roomService;
     private final RoomInviteService roomInviteService;
+    private final RoomJoinService roomJoinService;
 
     @PostMapping
     public ResponseEntity<SuccessResponse<RoomCreateRes>> createRoom(
@@ -33,5 +34,14 @@ public class RoomController {
     ) {
         InviteCreateRes response = roomInviteService.createInvite(authorization, roomId);
         return ResponseEntity.status(HttpStatus.CREATED).body(SuccessResponse.created(response));
+    }
+
+    @PostMapping("/join")
+    public ResponseEntity<SuccessResponse<JoinRoomRes>> joinRoom(
+            @RequestHeader("Authorization") String authorization,
+            @Valid @RequestBody JoinRoomReq req
+    ) {
+        JoinRoomRes response = roomJoinService.joinRoom(authorization, req);
+        return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
     }
 }
