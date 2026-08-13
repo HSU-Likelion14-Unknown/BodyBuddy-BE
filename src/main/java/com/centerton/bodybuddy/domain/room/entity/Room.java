@@ -22,6 +22,6 @@ public class Room extends BaseEntity {
     @Column(name = "room_name", length = 100, nullable = false)
     private String roomName;
 
-    @Column(name = "user_id", nullable = false, unique = true, length = 36)
+    @Column(name = "user_id", nullable = false, length = 36)
     private String userId;
 }
