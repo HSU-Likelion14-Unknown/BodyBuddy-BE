@@ -13,8 +13,6 @@ public enum ErrorResponseCode implements BaseResponseCode {
     INVALID_HTTP_MESSAGE_PARAMETER("GLOBAL_400_3", BAD_REQUEST, "HTTP 요청 파라미터 형식이 잘못되었습니다."),
     UNAUTHORIZED_REQUEST("GLOBAL_401", UNAUTHORIZED, "인증이 필요합니다."),
     ACCESS_DENIED_REQUEST("GLOBAL_403", FORBIDDEN, "해당 요청에 접근 권한이 없습니다."),
-    ROOM_ACCESS_DENIED("GLOBAL_403_ROOM", FORBIDDEN, "방장 또는 방 멤버만 접근할 수 있습니다."),
-    ROOM_NOT_FOUND("GLOBAL_404_ROOM", RESOURCE_NOT_FOUND, "방을 찾을 수 없습니다."),
     NOT_FOUND_ENDPOINT("GLOBAL_404", RESOURCE_NOT_FOUND, "존재하지 않는 앤드포인트입니다. 요청 URL을 확인해주세요."),
     UNSUPPORTED_HTTP_METHOD("GLOBAL_405", METHOD_NOT_ALLOWED, "지원하지 않는 메소드입니다."),
     RESOURCE_CONFLICT("GLOBAL_409", STATE_CONFLICT, "이미 존재하거나 충돌하는 리소스입니다."),

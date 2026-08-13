@@ -10,7 +10,7 @@ import com.centerton.bodybuddy.domain.room.util.InviteCodeGenerator;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import com.centerton.bodybuddy.domain.user.repository.UserRepository;
 import com.centerton.bodybuddy.global.exception.BaseException;
-import com.centerton.bodybuddy.global.response.code.ErrorResponseCode;
+import com.centerton.bodybuddy.domain.room.exception.RoomErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,10 +31,10 @@ public class RoomInviteService {
         User user = AuthValidator.validateAndGetUser(authorization, userRepository);
 
         Room room = roomRepository.findById(roomId)
-                .orElseThrow(() -> new BaseException(ErrorResponseCode.ROOM_NOT_FOUND));
+                .orElseThrow(() -> new BaseException(RoomErrorCode.ROOM_NOT_FOUND));
 
         if (!room.getUserId().equals(user.getUserId())) {
-            throw new BaseException(ErrorResponseCode.ROOM_ACCESS_DENIED);
+            throw new BaseException(RoomErrorCode.ROOM_ACCESS_DENIED);
         }
 
         RoomInvite invite = RoomInvite.builder()
