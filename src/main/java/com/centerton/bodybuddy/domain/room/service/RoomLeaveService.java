@@ -29,7 +29,7 @@ public class RoomLeaveService {
         }
 
         RoomMember member = roomMemberRepository.findByRoomIdAndUserId(roomId, user.getUserId())
-                .orElseThrow(() -> new BaseException(RoomErrorCode.NOT_ROOM_MEMBER));
+                .orElseThrow(() -> new BaseException(RoomErrorCode.NOT_ROOM_MEMBER_FOR_LEAVE));
 
         roomMemberRepository.delete(member);
     }
