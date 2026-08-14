@@ -17,6 +17,7 @@ public class RoomController {
     private final RoomService roomService;
     private final RoomInviteService roomInviteService;
     private final RoomJoinService roomJoinService;
+    private final RoomMemberService roomMemberService;
 
     @PostMapping
     public ResponseEntity<SuccessResponse<RoomCreateRes>> createRoom(
@@ -42,6 +43,15 @@ public class RoomController {
             @Valid @RequestBody JoinRoomReq req
     ) {
         JoinRoomRes response = roomJoinService.joinRoom(authorization, req);
+        return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
+    }
+
+    @GetMapping("/{roomId}/members")
+    public ResponseEntity<SuccessResponse<RoomMembersRes>> getMembers(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId
+    ) {
+        RoomMembersRes response = roomMemberService.getMembers(authorization, roomId);
         return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
     }
 }
