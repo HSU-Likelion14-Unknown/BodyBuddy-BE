@@ -18,6 +18,8 @@ public class RoomController {
     private final RoomInviteService roomInviteService;
     private final RoomJoinService roomJoinService;
     private final RoomMemberService roomMemberService;
+    private final RoomListService roomListService;
+    private final RoomLeaveService roomLeaveService;
 
     @PostMapping
     public ResponseEntity<SuccessResponse<RoomCreateRes>> createRoom(
@@ -53,5 +55,22 @@ public class RoomController {
     ) {
         RoomMembersRes response = roomMemberService.getMembers(authorization, roomId);
         return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<SuccessResponse<MyRoomsRes>> getMyRooms(
+            @RequestHeader("Authorization") String authorization
+    ) {
+        MyRoomsRes response = roomListService.getMyRooms(authorization);
+        return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
+    }
+
+    @DeleteMapping("/{roomId}/members/me")
+    public ResponseEntity<SuccessResponse<?>> leaveRoom(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId
+    ) {
+        roomLeaveService.leaveRoom(authorization, roomId);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).body(SuccessResponse.empty());
     }
 }
