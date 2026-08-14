@@ -4,6 +4,8 @@ import com.centerton.bodybuddy.domain.auth.util.AuthValidator;
 import com.centerton.bodybuddy.domain.room.dto.RoomCreateReq;
 import com.centerton.bodybuddy.domain.room.dto.RoomCreateRes;
 import com.centerton.bodybuddy.domain.room.entity.Room;
+import com.centerton.bodybuddy.domain.room.entity.RoomMember;
+import com.centerton.bodybuddy.domain.room.repository.RoomMemberRepository;
 import com.centerton.bodybuddy.domain.room.repository.RoomRepository;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import com.centerton.bodybuddy.domain.user.repository.UserRepository;
@@ -18,6 +20,7 @@ import java.util.UUID;
 public class RoomService {
 
     private final RoomRepository roomRepository;
+    private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
 
     @Transactional
@@ -30,6 +33,13 @@ public class RoomService {
                 .userId(user.getUserId())
                 .build();
         roomRepository.save(room);
+
+        RoomMember ownerMember = RoomMember.builder()
+                .memberId(UUID.randomUUID().toString())
+                .roomId(room.getRoomId())
+                .userId(user.getUserId())
+                .build();
+        roomMemberRepository.save(ownerMember);
 
         return RoomCreateRes.builder()
                 .roomId(room.getRoomId())
