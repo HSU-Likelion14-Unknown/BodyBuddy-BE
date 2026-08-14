@@ -8,4 +8,5 @@ import java.util.List;
 public interface RoomMemberRepository extends JpaRepository<RoomMember, String> {
     boolean existsByRoomIdAndUserId(String roomId, String userId);
     List<RoomMember> findByRoomId(String roomId);
+    List<RoomMember> findByUserId(String userId);
 }
