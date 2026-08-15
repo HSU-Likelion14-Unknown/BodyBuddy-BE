@@ -1,45 +1,52 @@
 package com.centerton.bodybuddy.global.response;
 
 import com.centerton.bodybuddy.global.response.code.BaseResponseCode;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import lombok.Builder;
 import lombok.Getter;
-import lombok.ToString;
+import org.slf4j.MDC;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 
 @Getter
-@ToString
-@JsonPropertyOrder({"isSuccess","timestamp", "code", "httpStatus", "message", "data"})
-public class ErrorResponse<T> extends BaseResponse{
-    private final int httpStatus;
-    private final T data;
+@JsonPropertyOrder({"timestamp", "status", "code", "message", "fieldErrors", "traceId"})
+public class ErrorResponse<T> {
 
-    @Builder
-    public ErrorResponse(T data, BaseResponseCode baseResponseCode){
-        super(false, baseResponseCode.getCode(), baseResponseCode.getMessage());
-        this.httpStatus = baseResponseCode.getHttpStatus();
-        this.data = data;
-    }
-    @Builder
-    public ErrorResponse(T data, BaseResponseCode baseResponseCode, String message){
-        super(false, baseResponseCode.getCode(), message);
-        this.httpStatus = baseResponseCode.getHttpStatus();
-        this.data = data;
-    }
+    private final Instant timestamp;
+    private final int status;
+    private final String code;
+    private final String message;
+    private final List<FieldErrorDetail> fieldErrors;
+    private final String traceId;
 
-    public static ErrorResponse<?> from(BaseResponseCode baseResponseCode){
-        return new ErrorResponse<>(null, baseResponseCode);
+    private ErrorResponse(BaseResponseCode responseCode, String message,
+                          List<FieldErrorDetail> fieldErrors) {
+        this.timestamp = Instant.now();
+        this.status = responseCode.getHttpStatus();
+        this.code = responseCode.getCode();
+        this.message = message;
+        this.fieldErrors = fieldErrors == null ? List.of() : List.copyOf(fieldErrors);
+        String currentTraceId = MDC.get("traceId");
+        this.traceId = currentTraceId == null ? UUID.randomUUID().toString() : currentTraceId;
     }
 
-    public static ErrorResponse<?> of(BaseResponseCode baseResponseCode, String message){
-        return new ErrorResponse<>(null, baseResponseCode, message);
+    public static ErrorResponse<?> from(BaseResponseCode responseCode) {
+        return new ErrorResponse<>(responseCode, responseCode.getMessage(), List.of());
     }
 
-    public static <T> ErrorResponse<T> of(BaseResponseCode baseResponseCode, T data){
-        return new ErrorResponse<>(data, baseResponseCode);
+    public static ErrorResponse<?> of(BaseResponseCode responseCode, String message) {
+        return new ErrorResponse<>(responseCode, message, List.of());
     }
 
-    public static <T> ErrorResponse<T> of(BaseResponseCode baseResponseCode, T data, String message){
-        return new ErrorResponse<>(data, baseResponseCode, message);
+    public static ErrorResponse<?> validation(BaseResponseCode responseCode,
+                                              List<FieldErrorDetail> fieldErrors) {
+        return new ErrorResponse<>(responseCode, responseCode.getMessage(), fieldErrors);
     }
 
+    @JsonIgnore
+    public int getHttpStatus() {
+        return status;
+    }
 }
