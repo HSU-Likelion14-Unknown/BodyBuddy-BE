@@ -1,6 +1,7 @@
 package com.centerton.bodybuddy.global.exception;
 
 import com.centerton.bodybuddy.global.response.ErrorResponse;
+import com.centerton.bodybuddy.global.response.FieldErrorDetail;
 import com.centerton.bodybuddy.global.response.code.ErrorResponseCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -26,7 +27,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse<?>> handleMethodArgumentNotValidException(MethodArgumentNotValidException e) {
         log.error("MethodArgumentNotValidException : {}", e.getMessage(), e);
-        ErrorResponse<?> errorResponse = ErrorResponse.of(ErrorResponseCode.INVALID_INPUT_VALUE, e.getFieldError().getDefaultMessage());
+        ErrorResponse<?> errorResponse = ErrorResponse.validation(
+                ErrorResponseCode.INVALID_INPUT_VALUE,
+                e.getBindingResult().getFieldErrors().stream()
+                        .map(error -> new FieldErrorDetail(error.getField(), error.getDefaultMessage()))
+                        .toList()
+        );
         return ResponseEntity.status(errorResponse.getHttpStatus()).body(errorResponse);
     }
 
@@ -34,7 +40,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BindException.class)
     public ResponseEntity<ErrorResponse<?>>handleBindException(BindException e) {
         log.error("BindException : {}", e.getMessage(), e);
-        ErrorResponse<?> errorResponse = ErrorResponse.of(ErrorResponseCode.INVALID_INPUT_VALUE, e.getFieldError().getDefaultMessage());
+        ErrorResponse<?> errorResponse = ErrorResponse.validation(
+                ErrorResponseCode.INVALID_INPUT_VALUE,
+                e.getBindingResult().getFieldErrors().stream()
+                        .map(error -> new FieldErrorDetail(error.getField(), error.getDefaultMessage()))
+                        .toList()
+        );
         return ResponseEntity.status(errorResponse.getHttpStatus()).body(errorResponse);
     }
 
