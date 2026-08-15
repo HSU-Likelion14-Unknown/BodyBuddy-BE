@@ -53,17 +53,34 @@ public class UserService {
     }
 
     @Transactional
-    public PreferenceRes updatePreferences(String authorization, PreferenceReq req) {
+    public UserProfileUpdateRes updateProfile(String authorization, UserProfileUpdateReq req) {
         User user = AuthValidator.validateAndGetUser(authorization, userRepository);
 
-        user.updatePreferences(
+        user.updateProfile(
+                req.getNickname(),
+                req.getBirthYear(),
+                req.getGender(),
                 req.getAllergyCodes(),
-                req.getDislikedFoods()
+                req.getDislikedFoods(),
+                req.getShareToRoom(),
+                req.getProfileImageUrl()
         );
 
-        return PreferenceRes.builder()
-                .allergyCodes(req.getAllergyCodes())
-                .dislikedFoods(req.getDislikedFoods())
+        return UserProfileUpdateRes.builder()
+                .userId(user.getUserId())
+                .nickname(user.getNickname())
+                .birthYear(user.getBirthYear())
+                .gender(user.getGender())
+                .allergyCodes(user.getAllergyCodes())
+                .dislikedFoods(user.getDislikedFoods())
+                .shareToRoom(user.getShareToRoom())
+                .profileImageUrl(user.getProfileImageUrl())
                 .build();
+    }
+
+    @Transactional
+    public void deleteUser(String authorization) {
+        User user = AuthValidator.validateAndGetUser(authorization, userRepository);
+        userRepository.delete(user);
     }
 }
