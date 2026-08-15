@@ -39,31 +39,24 @@ public class UserService {
                 .build();
     }
 
-    @Transactional(readOnly = true)
-    public UserInfoRes getMyInfo(String authorization) {
-        User user = AuthValidator.validateAndGetUser(authorization, userRepository);
-
-        return UserInfoRes.builder()
-                .userId(user.getUserId())
-                .nickname(user.getNickname())
-                .birthYear(user.getBirthYear())
-                .gender(user.getGender())
-                .onboardingCompletedAt(user.getOnboardingCompletedAt())
-                .build();
-    }
-
     @Transactional
-    public PreferenceRes updatePreferences(String authorization, PreferenceReq req) {
-        User user = AuthValidator.validateAndGetUser(authorization, userRepository);
+public PreferenceRes updatePreferences(
+        String authorization,
+        PreferenceReq req
+) {
+    User user = AuthValidator.validateAndGetUser(
+            authorization,
+            userRepository
+    );
 
-        user.updatePreferences(
-                req.getAllergyCodes(),
-                req.getDislikedFoods()
-        );
+    user.updatePreferences(
+            req.getAllergyCodes(),
+            req.getDislikedFoods()
+    );
 
-        return PreferenceRes.builder()
-                .allergyCodes(req.getAllergyCodes())
-                .dislikedFoods(req.getDislikedFoods())
-                .build();
-    }
+    return PreferenceRes.builder()
+            .allergyCodes(req.getAllergyCodes())
+            .dislikedFoods(req.getDislikedFoods())
+            .build();
+}
 }

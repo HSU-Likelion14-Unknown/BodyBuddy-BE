@@ -21,13 +21,4 @@ public class IdempotencyKey extends BaseEntity {
 
     @Column(name = "user_id", nullable = false, length = 36)
     private String userId;
-
-    @Column(name = "operation", length = 40)
-    private String operation;
-
-    @Column(name = "request_fingerprint", length = 64)
-    private String requestFingerprint;
-
-    @Column(name = "resource_id", length = 36)
-    private String resourceId;
 }
