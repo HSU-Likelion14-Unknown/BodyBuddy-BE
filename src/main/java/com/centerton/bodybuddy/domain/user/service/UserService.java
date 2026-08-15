@@ -56,7 +56,10 @@ public class UserService {
     public PreferenceRes updatePreferences(String authorization, PreferenceReq req) {
         User user = AuthValidator.validateAndGetUser(authorization, userRepository);
 
-        user.updatePreferences(req.getAllergyCodes(), req.getDislikedFoods());
+        user.updatePreferences(
+                req.getAllergyCodes(),
+                req.getDislikedFoods()
+        );
 
         return PreferenceRes.builder()
                 .allergyCodes(req.getAllergyCodes())
