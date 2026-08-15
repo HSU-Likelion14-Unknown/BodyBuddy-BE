@@ -16,6 +16,11 @@ public class NutritionSummaryRes {
     private BigDecimal fatG;
     private BigDecimal fiberG;
     private BigDecimal sodiumMg;
+    private BigDecimal calciumMg;
+    private BigDecimal ironMg;
+    private BigDecimal potassiumMg;
+    private BigDecimal vitaminAMcgRae;
+    private BigDecimal vitaminCMg;
     private NutritionBasis basis;
 
     public static NutritionSummaryRes from(MealNutritionSummary summary) {
@@ -30,6 +35,11 @@ public class NutritionSummaryRes {
                 .fatG(nutrition.getFatG())
                 .fiberG(nutrition.getFiberG())
                 .sodiumMg(nutrition.getSodiumMg())
+                .calciumMg(nutrition.getCalciumMg())
+                .ironMg(nutrition.getIronMg())
+                .potassiumMg(nutrition.getPotassiumMg())
+                .vitaminAMcgRae(nutrition.getVitaminAMcgRae())
+                .vitaminCMg(nutrition.getVitaminCMg())
                 .basis(summary.getBasis())
                 .build();
     }

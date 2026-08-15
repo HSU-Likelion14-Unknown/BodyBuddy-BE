@@ -7,7 +7,8 @@ import com.centerton.bodybuddy.domain.auth.entity.IdempotencyKey;
 import com.centerton.bodybuddy.domain.auth.repository.IdempotencyKeyRepository;
 import com.centerton.bodybuddy.domain.food.entity.Food;
 import com.centerton.bodybuddy.domain.food.entity.FoodNutrition;
-import com.centerton.bodybuddy.domain.food.repository.FoodNutritionRepository;
+import com.centerton.bodybuddy.domain.food.service.FoodCatalogMatch;
+import com.centerton.bodybuddy.domain.food.service.FoodMatchingService;
 import com.centerton.bodybuddy.domain.meal.dto.*;
 import com.centerton.bodybuddy.domain.meal.entity.Meal;
 import com.centerton.bodybuddy.domain.meal.entity.MealNutritionSummary;
@@ -51,7 +52,7 @@ class MealServiceTest {
     @Mock private MealItemRepository mealItemRepository;
     @Mock private MealNutritionSummaryRepository nutritionSummaryRepository;
     @Mock private AiAnalysisRunRepository analysisRunRepository;
-    @Mock private FoodNutritionRepository foodNutritionRepository;
+    @Mock private FoodMatchingService foodMatchingService;
     @Mock private IdempotencyKeyRepository idempotencyKeyRepository;
 
     private MealService mealService;
@@ -65,7 +66,7 @@ class MealServiceTest {
                 mealItemRepository,
                 nutritionSummaryRepository,
                 analysisRunRepository,
-                foodNutritionRepository,
+                foodMatchingService,
                 idempotencyKeyRepository
         );
         user = User.builder()
@@ -162,8 +163,8 @@ class MealServiceTest {
         meal.markReviewRequired();
         when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
                 .thenReturn(Optional.of(meal));
-        when(foodNutritionRepository.findById("food-id"))
-                .thenReturn(Optional.of(foodNutrition()));
+        when(foodMatchingService.findById("food-id"))
+                .thenReturn(Optional.of(foodCatalogMatch()));
         when(mealItemRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
         when(nutritionSummaryRepository.findById("meal-id")).thenReturn(Optional.empty());
         when(nutritionSummaryRepository.save(any(MealNutritionSummary.class)))
@@ -186,6 +187,12 @@ class MealServiceTest {
         assertThat(response.getItems()).hasSize(1);
         assertThat(response.getItems().getFirst().getCaloriesKcal())
                 .isEqualByComparingTo("100.00");
+        assertThat(response.getItems().getFirst().getCalciumMg())
+                .isEqualByComparingTo("50.00");
+        assertThat(response.getItems().getFirst().getNutritionStatus())
+                .isEqualTo(NutritionStatus.CALCULATED);
+        assertThat(response.getNutritionSummaryStatus())
+                .isEqualTo(NutritionSummaryStatus.COMPLETE);
         assertThat(response.getNutritionSummary().getProteinG())
                 .isEqualByComparingTo("5.00");
     }
@@ -232,8 +239,8 @@ class MealServiceTest {
         meal.confirm(LocalDateTime.now());
         when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
                 .thenReturn(Optional.of(meal));
-        when(foodNutritionRepository.findById("food-id"))
-                .thenReturn(Optional.of(foodNutrition()));
+        when(foodMatchingService.findById("food-id"))
+                .thenReturn(Optional.of(foodCatalogMatch()));
         when(mealItemRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
         when(nutritionSummaryRepository.findById("meal-id")).thenReturn(Optional.empty());
         when(nutritionSummaryRepository.save(any(MealNutritionSummary.class)))
@@ -256,6 +263,9 @@ class MealServiceTest {
                 .isEqualByComparingTo("100.00");
         assertThat(response.getNutritionSummary().getProteinG())
                 .isEqualByComparingTo("5.00");
+        assertThat(response.getItems()).hasSize(1);
+        assertThat(response.getNutritionSummaryStatus())
+                .isEqualTo(NutritionSummaryStatus.COMPLETE);
         verify(mealItemRepository).deleteAllByMealMealId("meal-id");
         verify(mealItemRepository).flush();
         verify(nutritionSummaryRepository).flush();
@@ -280,7 +290,71 @@ class MealServiceTest {
         )).isInstanceOfSatisfying(BaseException.class, exception ->
                 assertThat(exception.getBaseResponseCode())
                         .isEqualTo(ErrorResponseCode.MEAL_ITEMS_INVALID));
-        verify(foodNutritionRepository, never()).findById(anyString());
+        verify(foodMatchingService, never()).findById(anyString());
+    }
+
+    @Test
+    void matchesFoodNameWhenDirectInputHasNoFoodId() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
+        meal.markReviewRequired();
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+        when(foodMatchingService.matchByName("두부"))
+                .thenReturn(Optional.of(foodCatalogMatch()));
+        when(mealItemRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(nutritionSummaryRepository.findById("meal-id")).thenReturn(Optional.empty());
+        when(nutritionSummaryRepository.save(any(MealNutritionSummary.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        MealConfirmRes response = mealService.confirmMeal(
+                "Bearer raw-access-key",
+                "meal-id",
+                new MealConfirmReq(
+                        List.of(new MealItemInputReq(
+                                null, "두부", new BigDecimal("50"), "g"
+                        )),
+                        OffsetDateTime.now()
+                )
+        );
+
+        assertThat(response.getItems().getFirst().getFoodId()).isEqualTo("food-id");
+        assertThat(response.getItems().getFirst().getSource())
+                .isEqualTo(com.centerton.bodybuddy.domain.meal.entity.MealItemSource.USER_ADDED);
+        assertThat(response.getItems().getFirst().getNutritionStatus())
+                .isEqualTo(NutritionStatus.CALCULATED);
+    }
+
+    @Test
+    void storesUnmatchedDirectInputWithPartialNutritionSummary() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "엄마표 특별식", LocalDateTime.now());
+        meal.markReviewRequired();
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+        when(foodMatchingService.matchByName("엄마표 특별식")).thenReturn(Optional.empty());
+        when(mealItemRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(nutritionSummaryRepository.findById("meal-id")).thenReturn(Optional.empty());
+        when(nutritionSummaryRepository.save(any(MealNutritionSummary.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        MealConfirmRes response = mealService.confirmMeal(
+                "Bearer raw-access-key",
+                "meal-id",
+                new MealConfirmReq(
+                        List.of(new MealItemInputReq(
+                                null, "엄마표 특별식", new BigDecimal("1"), "그릇"
+                        )),
+                        OffsetDateTime.now()
+                )
+        );
+
+        assertThat(response.getItems().getFirst().getFoodId()).isNull();
+        assertThat(response.getItems().getFirst().getNutritionStatus())
+                .isEqualTo(NutritionStatus.UNKNOWN);
+        assertThat(response.getNutritionSummaryStatus())
+                .isEqualTo(NutritionSummaryStatus.PARTIAL);
+        assertThat(response.getNutritionSummary().getCaloriesKcal()).isNull();
     }
 
     @Test
@@ -317,8 +391,14 @@ class MealServiceTest {
                 .nutrition(NutritionValues.builder()
                         .caloriesKcal(new BigDecimal("200"))
                         .proteinG(new BigDecimal("10"))
+                        .calciumMg(new BigDecimal("100"))
                         .build())
                 .updatedAt(LocalDateTime.now())
                 .build();
+    }
+
+    private FoodCatalogMatch foodCatalogMatch() {
+        FoodNutrition nutrition = foodNutrition();
+        return new FoodCatalogMatch(nutrition.getFood(), nutrition);
     }
 }
