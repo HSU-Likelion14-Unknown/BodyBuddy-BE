@@ -20,6 +20,7 @@ public enum ErrorResponseCode implements BaseResponseCode {
     IDEMPOTENCY_KEY_REUSED("IDEMPOTENCY_KEY_REUSED", STATE_CONFLICT, "같은 Idempotency-Key가 다른 요청에 사용되었습니다."),
     ONBOARDING_NOT_COMPLETED("ONBOARDING_NOT_COMPLETED", STATE_CONFLICT, "온보딩을 먼저 완료해 주세요."),
     INVALID_MEAL_STATUS("MEAL_CONFIRMATION_CONFLICT", STATE_CONFLICT, "이미 확정되었거나 현재 상태에서 확정할 수 없습니다."),
+    MEAL_COMPLETION_CONFLICT("MEAL_COMPLETION_CONFLICT", STATE_CONFLICT, "현재 상태에서는 식사 기록을 완료할 수 없습니다."),
     MEAL_VERSION_CONFLICT("MEAL_VERSION_CONFLICT", STATE_CONFLICT, "식사 기록이 변경되었습니다. 최신 정보를 다시 조회해 주세요."),
     REQUEST_ENTITY_TOO_LARGE("PAYLOAD_TOO_LARGE", PAYLOAD_TOO_LARGE, "요청 크기가 허용 범위를 초과했습니다."),
     INVALID_MEDIA_TYPE("UNSUPPORTED_MEDIA_TYPE", UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 미디어 타입입니다."),

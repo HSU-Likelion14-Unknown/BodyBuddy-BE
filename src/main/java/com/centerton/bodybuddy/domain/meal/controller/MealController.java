@@ -1,6 +1,7 @@
 package com.centerton.bodybuddy.domain.meal.controller;
 
 import com.centerton.bodybuddy.domain.meal.dto.MealAcceptedRes;
+import com.centerton.bodybuddy.domain.meal.dto.MealCompleteRes;
 import com.centerton.bodybuddy.domain.meal.dto.MealConfirmRes;
 import com.centerton.bodybuddy.domain.meal.dto.MealConfirmReq;
 import com.centerton.bodybuddy.domain.meal.dto.MealDetailRes;
@@ -43,6 +44,14 @@ public class MealController {
             @Valid @RequestBody MealConfirmReq request
     ) {
         return ResponseEntity.ok(mealService.confirmMeal(authorization, mealId, request));
+    }
+
+    @PostMapping("/{mealId}/complete")
+    public ResponseEntity<MealCompleteRes> completeMeal(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String mealId
+    ) {
+        return ResponseEntity.ok(mealService.completeMeal(authorization, mealId));
     }
 
     @DeleteMapping("/{mealId}")

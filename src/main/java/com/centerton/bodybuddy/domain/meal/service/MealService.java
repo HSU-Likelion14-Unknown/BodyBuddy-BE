@@ -177,6 +177,24 @@ public class MealService {
     }
 
     @Transactional
+    public MealCompleteRes completeMeal(String authorization, String mealId) {
+        User user = authenticatedUser(authorization);
+        Meal meal = activeMeal(mealId, user.getUserId());
+        if (meal.getStatus() != MealStatus.CONFIRMED) {
+            throw new BaseException(ErrorResponseCode.MEAL_COMPLETION_CONFLICT);
+        }
+
+        LocalDateTime completedAt = LocalDateTime.now(ZoneOffset.UTC);
+        meal.complete(completedAt);
+
+        return MealCompleteRes.builder()
+                .mealId(meal.getMealId())
+                .status(meal.getStatus())
+                .completedAt(toUtc(meal.getCompletedAt()))
+                .build();
+    }
+
+    @Transactional
     public void deleteMeal(String authorization, String mealId) {
         User user = authenticatedUser(authorization);
         Meal meal = mealRepository.findByMealIdAndUserUserId(mealId, user.getUserId())

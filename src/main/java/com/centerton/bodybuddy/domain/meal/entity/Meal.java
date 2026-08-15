@@ -99,6 +99,11 @@ public class Meal extends BaseEntity {
         this.confirmedAt = confirmedAt;
     }
 
+    public void complete(LocalDateTime completedAt) {
+        this.status = MealStatus.COMPLETED;
+        this.completedAt = completedAt;
+    }
+
     public void updateEatenAt(LocalDateTime eatenAt) {
         this.eatenAt = eatenAt;
     }

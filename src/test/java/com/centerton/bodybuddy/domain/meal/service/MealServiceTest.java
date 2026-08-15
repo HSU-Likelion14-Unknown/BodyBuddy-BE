@@ -191,6 +191,40 @@ class MealServiceTest {
     }
 
     @Test
+    void completesConfirmedMeal() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
+        meal.markReviewRequired();
+        meal.confirm(LocalDateTime.now());
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+
+        MealCompleteRes response = mealService.completeMeal(
+                "Bearer raw-access-key",
+                "meal-id"
+        );
+
+        assertThat(response.getStatus()).isEqualTo(MealStatus.COMPLETED);
+        assertThat(response.getCompletedAt()).isNotNull();
+        assertThat(meal.getCompletedAt()).isNotNull();
+    }
+
+    @Test
+    void rejectsCompletionUnlessMealIsConfirmed() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+
+        assertThatThrownBy(() -> mealService.completeMeal(
+                "Bearer raw-access-key",
+                "meal-id"
+        )).isInstanceOfSatisfying(BaseException.class, exception ->
+                assertThat(exception.getBaseResponseCode())
+                        .isEqualTo(ErrorResponseCode.MEAL_COMPLETION_CONFLICT));
+    }
+
+    @Test
     void permanentlyDeletesMealAndCurrentChildren() {
         authenticate(user);
         Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
