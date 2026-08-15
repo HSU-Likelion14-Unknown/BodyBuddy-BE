@@ -5,6 +5,20 @@
 - Framework: Spring Boot
 - Database: MySQL
 
+## 실행 환경
+
+로컬 실행은 기본 프로필을 사용하며 Hibernate가 개발 DB 스키마를 갱신합니다.
+배포 환경에서는 반드시 `prod` 프로필과 DB 환경변수를 지정합니다.
+
+```text
+SPRING_PROFILES_ACTIVE=prod
+DB_URL=jdbc:mysql://<host>:3306/bodybuddy_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+DB_USERNAME=<database-user>
+DB_PASSWORD=<database-password>
+```
+
+`prod` 프로필은 `ddl-auto=validate`, `show-sql=false`로 실행되므로 애플리케이션이 운영 DB 구조를 임의로 변경하지 않습니다.
+
 ## 🌿 브랜치 네이밍 규칙
 
 브랜치 명: `(태그/#이슈번호)`

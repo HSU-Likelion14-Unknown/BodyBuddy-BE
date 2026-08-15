@@ -32,11 +32,17 @@ ALTER TABLE foods
     );
 
 ALTER TABLE food_nutritions
-    ADD COLUMN calcium_mg DECIMAL(10,2) NULL AFTER sodium_mg,
-    ADD COLUMN iron_mg DECIMAL(10,2) NULL AFTER calcium_mg,
-    ADD COLUMN potassium_mg DECIMAL(10,2) NULL AFTER iron_mg,
-    ADD COLUMN vitamin_a_mcg_rae DECIMAL(10,2) NULL AFTER potassium_mg,
-    ADD COLUMN vitamin_c_mg DECIMAL(10,2) NULL AFTER vitamin_a_mcg_rae,
+    MODIFY COLUMN calories_kcal DECIMAL(12,2) NULL,
+    MODIFY COLUMN carbohydrate_g DECIMAL(12,2) NULL,
+    MODIFY COLUMN protein_g DECIMAL(12,2) NULL,
+    MODIFY COLUMN fat_g DECIMAL(12,2) NULL,
+    MODIFY COLUMN fiber_g DECIMAL(12,2) NULL,
+    MODIFY COLUMN sodium_mg DECIMAL(12,2) NULL,
+    ADD COLUMN calcium_mg DECIMAL(12,2) NULL AFTER sodium_mg,
+    ADD COLUMN iron_mg DECIMAL(12,2) NULL AFTER calcium_mg,
+    ADD COLUMN potassium_mg DECIMAL(12,2) NULL AFTER iron_mg,
+    ADD COLUMN vitamin_a_mcg_rae DECIMAL(12,2) NULL AFTER potassium_mg,
+    ADD COLUMN vitamin_c_mg DECIMAL(12,2) NULL AFTER vitamin_a_mcg_rae,
     ADD CONSTRAINT chk_food_nutritions_micronutrients_nonnegative CHECK (
         (calcium_mg IS NULL OR calcium_mg >= 0)
         AND (iron_mg IS NULL OR iron_mg >= 0)
@@ -46,11 +52,17 @@ ALTER TABLE food_nutritions
     );
 
 ALTER TABLE meal_items
-    ADD COLUMN calcium_mg DECIMAL(10,2) NULL AFTER sodium_mg,
-    ADD COLUMN iron_mg DECIMAL(10,2) NULL AFTER calcium_mg,
-    ADD COLUMN potassium_mg DECIMAL(10,2) NULL AFTER iron_mg,
-    ADD COLUMN vitamin_a_mcg_rae DECIMAL(10,2) NULL AFTER potassium_mg,
-    ADD COLUMN vitamin_c_mg DECIMAL(10,2) NULL AFTER vitamin_a_mcg_rae,
+    MODIFY COLUMN calories_kcal DECIMAL(12,2) NULL,
+    MODIFY COLUMN carbohydrate_g DECIMAL(12,2) NULL,
+    MODIFY COLUMN protein_g DECIMAL(12,2) NULL,
+    MODIFY COLUMN fat_g DECIMAL(12,2) NULL,
+    MODIFY COLUMN fiber_g DECIMAL(12,2) NULL,
+    MODIFY COLUMN sodium_mg DECIMAL(12,2) NULL,
+    ADD COLUMN calcium_mg DECIMAL(12,2) NULL AFTER sodium_mg,
+    ADD COLUMN iron_mg DECIMAL(12,2) NULL AFTER calcium_mg,
+    ADD COLUMN potassium_mg DECIMAL(12,2) NULL AFTER iron_mg,
+    ADD COLUMN vitamin_a_mcg_rae DECIMAL(12,2) NULL AFTER potassium_mg,
+    ADD COLUMN vitamin_c_mg DECIMAL(12,2) NULL AFTER vitamin_a_mcg_rae,
     ADD CONSTRAINT chk_meal_items_micronutrients_nonnegative CHECK (
         (calcium_mg IS NULL OR calcium_mg >= 0)
         AND (iron_mg IS NULL OR iron_mg >= 0)

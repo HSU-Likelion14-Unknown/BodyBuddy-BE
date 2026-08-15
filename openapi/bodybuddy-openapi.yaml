@@ -1,0 +1,684 @@
+openapi: 3.1.0
+info:
+  title: BodyBuddy API
+  version: 1.2.0
+  description: 중앙톤 Notion API 명세와 MySQL 스키마를 기준으로 한 MVP 계약
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: User
+  - name: Meal
+  - name: AI
+  - name: Recommendation
+  - name: Calendar
+  - name: Room
+paths:
+  /auth/anonymous:
+    post:
+      tags: [Auth]
+      summary: 익명 사용자와 접근키 발급
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: 발급 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AnonymousAccessResponse'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /users/me:
+    get:
+      tags: [User]
+      summary: 내 정보 조회
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UserResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /users/me/onboarding:
+    put:
+      tags: [User]
+      summary: 온보딩 저장
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OnboardingRequest'}
+      responses:
+        '200':
+          description: 저장 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UserResponse'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /users/me/preferences:
+    patch:
+      tags: [User]
+      summary: 알레르기와 비선호 음식 교체 저장
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PreferencesRequest'}
+      responses:
+        '200':
+          description: 수정 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PreferencesResponse'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /meals/images:
+    post:
+      tags: [Meal, AI]
+      summary: 이미지 식사 생성 및 음식 인식 시작
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image, eatenAt]
+              properties:
+                image: {type: string, format: binary}
+                eatenAt: {type: string, format: date-time}
+      responses:
+        '202':
+          description: 인식 시작
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MealAcceptedResponse'}
+        '413': {$ref: '#/components/responses/ImageTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedImage'}
+  /meals/text:
+    post:
+      tags: [Meal, AI]
+      summary: 직접 입력 식사 생성
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, eatenAt]
+              properties:
+                text: {type: string, minLength: 1, maxLength: 500}
+                eatenAt: {type: string, format: date-time}
+      responses:
+        '202':
+          description: 분석 시작
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MealAcceptedResponse'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /meals/{mealId}:
+    parameters:
+      - $ref: '#/components/parameters/MealId'
+    get:
+      tags: [Meal]
+      summary: 식사 상세 조회
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MealDetailResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      tags: [Meal]
+      summary: 식사 영구 삭제
+      responses:
+        '204': {description: 삭제 성공}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /meals/{mealId}/recognition-candidates:
+    get:
+      tags: [AI]
+      summary: 음식 인식 후보 조회
+      parameters:
+        - $ref: '#/components/parameters/MealId'
+      responses:
+        '200':
+          description: 후보 조회 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RecognitionCandidatesResponse'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /meals/{mealId}/recognition/retry:
+    post:
+      tags: [AI]
+      summary: 음식 재인식
+      parameters:
+        - $ref: '#/components/parameters/MealId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: 재인식 시작
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MealAcceptedResponse'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '503': {$ref: '#/components/responses/AiUnavailable'}
+  /meals/{mealId}/confirm:
+    post:
+      tags: [Meal]
+      summary: 식사 음식 확정
+      parameters:
+        - $ref: '#/components/parameters/MealId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MealConfirmRequest'}
+      responses:
+        '200':
+          description: 확정 및 영양 계산 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MealConfirmationResponse'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /meals/{mealId}/items:
+    put:
+      tags: [Meal]
+      summary: 식사 음식 전체 교체 및 영양 재계산
+      parameters:
+        - $ref: '#/components/parameters/MealId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  minItems: 1
+                  items: {$ref: '#/components/schemas/MealItemInput'}
+      responses:
+        '200':
+          description: 수정 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MealConfirmationResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /meals/{mealId}/recommendations:
+    post:
+      tags: [Recommendation]
+      summary: 다음 식사 추천 생성
+      description: 확정된 식사마다 최대 한 번 생성한다. 당일 누적 영양과 부족분을 기준으로 원재료 및 활용 음식을 반환한다.
+      parameters:
+        - $ref: '#/components/parameters/MealId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: 추천 생성
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RecommendationResponse'}
+        '200':
+          description: 추천 가능한 안전 후보 없음
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RecommendationResponse'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '503': {$ref: '#/components/responses/AiUnavailable'}
+  /recommendations/{recommendationId}/decision:
+    post:
+      tags: [Recommendation]
+      summary: 추천 선택 또는 건너뛰기
+      parameters:
+        - name: recommendationId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RecommendationDecisionRequest'}
+      responses:
+        '200':
+          description: 결정 저장
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RecommendationDecisionResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /calendar/days/{date}/meals:
+    get:
+      tags: [Calendar]
+      summary: 날짜별 식사 조회
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: {type: string, format: date}
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DailyMealsResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+  /calendar/months/{year}/{month}:
+    get:
+      tags: [Calendar]
+      summary: 월간 영양 통계 조회
+      parameters:
+        - {name: year, in: path, required: true, schema: {type: integer}}
+        - {name: month, in: path, required: true, schema: {type: integer, minimum: 1, maximum: 12}}
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MonthlyNutritionResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+  /rooms:
+    post:
+      tags: [Room]
+      summary: 공유방 생성
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [roomName]
+              properties:
+                roomName: {type: string, minLength: 1, maxLength: 100}
+      responses:
+        '201':
+          description: 생성 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RoomResponse'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /rooms/join:
+    post:
+      tags: [Room]
+      summary: 초대 코드로 공유방 참여
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 1, maxLength: 20}
+      responses:
+        '200':
+          description: 참여 성공 또는 기존 참여 결과
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RoomJoinResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /rooms/{roomId}/invites:
+    post:
+      tags: [Room]
+      summary: 일회성 초대 코드 생성
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: 생성 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RoomInviteResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /rooms/{roomId}/members:
+    get:
+      tags: [Room]
+      summary: 공유방 멤버 조회
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RoomMembersResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-access-key
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 16, maxLength: 128}
+    MealId:
+      name: mealId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    RoomId:
+      name: roomId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+  responses:
+    BadRequest:
+      description: 잘못된 요청
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    Unauthorized:
+      description: 접근키 누락 또는 무효
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    Forbidden:
+      description: 권한 없음
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    NotFound:
+      description: 리소스 없음 또는 소유자 불일치
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    Conflict:
+      description: 상태 또는 중복 충돌
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    ValidationFailed:
+      description: 값 검증 실패
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    ImageTooLarge:
+      description: 이미지 크기 제한 초과
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    UnsupportedImage:
+      description: 지원하지 않는 이미지 형식
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+    AiUnavailable:
+      description: AI 타임아웃 또는 일시 장애
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+  schemas:
+    MealStatus:
+      type: string
+      enum: [ANALYZING, REVIEW_REQUIRED, REANALYZING, CONFIRMED, COMPLETED, FAILED]
+    AnonymousAccessResponse:
+      type: object
+      required: [userId, accessKey, onboardingCompletedAt]
+      properties:
+        userId: {type: string, format: uuid}
+        accessKey: {type: string, description: 최초 발급 시 한 번만 반환}
+        onboardingCompletedAt: {type: [string, 'null'], format: date-time}
+    UserResponse:
+      type: object
+      required: [userId, gender, onboardingCompletedAt]
+      properties:
+        userId: {type: string, format: uuid}
+        nickname: {type: [string, 'null']}
+        birthYear: {type: [integer, 'null']}
+        gender: {type: string, enum: [MALE, FEMALE, PREFER_NOT_TO_SAY]}
+        onboardingCompletedAt: {type: [string, 'null'], format: date-time}
+    OnboardingRequest:
+      type: object
+      required: [nickname, gender, allergyCodes, dislikedFoods]
+      properties:
+        nickname: {type: string, minLength: 1, maxLength: 50}
+        birthYear: {type: [integer, 'null'], minimum: 1900, maximum: 2100}
+        gender: {type: string, enum: [MALE, FEMALE, PREFER_NOT_TO_SAY]}
+        allergyCodes: {type: array, items: {type: string}}
+        dislikedFoods: {type: array, items: {type: string}}
+    PreferencesRequest:
+      type: object
+      required: [allergyCodes, dislikedFoods]
+      properties:
+        allergyCodes: {type: array, items: {type: string}}
+        dislikedFoods: {type: array, items: {type: string}}
+    PreferencesResponse:
+      allOf:
+        - $ref: '#/components/schemas/PreferencesRequest'
+    MealAcceptedResponse:
+      type: object
+      required: [mealId, status]
+      properties:
+        mealId: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/MealStatus'}
+        pollAfterMs: {type: integer, minimum: 0}
+    RecognitionCandidate:
+      type: object
+      required: [candidateId, aiFoodName, candidateOrder, selectionStatus]
+      properties:
+        candidateId: {type: string, format: uuid}
+        aiFoodName: {type: string}
+        foodId: {type: [string, 'null'], format: uuid}
+        candidateOrder: {type: integer, minimum: 0}
+        selectionStatus: {type: string, enum: [PENDING, ACCEPTED, REJECTED]}
+    RecognitionCandidatesResponse:
+      type: object
+      required: [mealId, candidates]
+      properties:
+        mealId: {type: string, format: uuid}
+        candidates: {type: array, items: {$ref: '#/components/schemas/RecognitionCandidate'}}
+    MealItemInput:
+      type: object
+      required: [foodName, amount, unit]
+      properties:
+        foodId:
+          type: [string, 'null']
+          format: uuid
+          description: DB에 매칭된 음식 ID. 자유 입력 음식은 null 또는 생략 가능
+        foodName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 최종 표시 음식명. foodId가 null이면 사용자가 입력한 이름
+        amount: {type: number, exclusiveMinimum: 0}
+        unit: {type: string, minLength: 1, maxLength: 30}
+    MealItem:
+      type: object
+      required: [mealItemId, foodName, consumedAmount, consumedUnit, nutritionStatus]
+      properties:
+        mealItemId: {type: string, format: uuid}
+        foodId: {type: [string, 'null'], format: uuid}
+        foodName: {type: string}
+        consumedAmount: {type: number, exclusiveMinimum: 0}
+        consumedUnit: {type: string}
+        nutritionStatus:
+          type: string
+          enum: [CALCULATED, UNKNOWN]
+          description: DB 영양 계산 성공 여부
+        caloriesKcal: {type: [number, 'null'], minimum: 0}
+        proteinG: {type: [number, 'null'], minimum: 0}
+    Nutrition:
+      type: object
+      properties:
+        caloriesKcal: {type: [number, 'null'], minimum: 0}
+        carbohydrateG: {type: [number, 'null'], minimum: 0}
+        proteinG: {type: [number, 'null'], minimum: 0}
+        fatG: {type: [number, 'null'], minimum: 0}
+        fiberG: {type: [number, 'null'], minimum: 0}
+        sodiumMg: {type: [number, 'null'], minimum: 0}
+        calciumMg: {type: [number, 'null'], minimum: 0}
+        ironMg: {type: [number, 'null'], minimum: 0}
+        potassiumMg: {type: [number, 'null'], minimum: 0}
+        vitaminAMcgRae: {type: [number, 'null'], minimum: 0}
+        vitaminCMg: {type: [number, 'null'], minimum: 0}
+    NutritionGap:
+      type: object
+      description: 권장량 대비 부족분. 모든 필드를 반환하며 부족하지 않으면 0
+      required: [proteinG, fiberG, calciumMg, ironMg, potassiumMg, vitaminAMcgRae, vitaminCMg]
+      properties:
+        proteinG: {type: number, minimum: 0}
+        fiberG: {type: number, minimum: 0}
+        calciumMg: {type: number, minimum: 0}
+        ironMg: {type: number, minimum: 0}
+        potassiumMg: {type: number, minimum: 0}
+        vitaminAMcgRae: {type: number, minimum: 0}
+        vitaminCMg: {type: number, minimum: 0}
+    MealConfirmRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/MealItemInput'}
+        eatenAt: {type: string, format: date-time}
+    MealConfirmationResponse:
+      type: object
+      required: [mealId, status, items, nutritionSummaryStatus, nutritionSummary]
+      properties:
+        mealId: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/MealStatus'}
+        items: {type: array, items: {$ref: '#/components/schemas/MealItem'}}
+        nutritionSummaryStatus:
+          type: string
+          enum: [COMPLETE, PARTIAL]
+          description: UNKNOWN 음식이 하나라도 있으면 PARTIAL
+        nutritionSummary: {$ref: '#/components/schemas/Nutrition'}
+    MealDetailResponse:
+      type: object
+      required: [mealId, status, eatenAt, candidates, items]
+      properties:
+        mealId: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/MealStatus'}
+        eatenAt: {type: string, format: date-time}
+        candidates: {type: array, items: {$ref: '#/components/schemas/RecognitionCandidate'}}
+        items: {type: array, items: {$ref: '#/components/schemas/MealItem'}}
+        nutritionSummary:
+          oneOf:
+            - {$ref: '#/components/schemas/Nutrition'}
+            - {type: 'null'}
+        recommendation:
+          oneOf:
+            - {$ref: '#/components/schemas/RecommendationResponse'}
+            - {type: 'null'}
+    RecommendationDish:
+      type: object
+      required: [dishId, dishName, rank]
+      properties:
+        dishId: {type: string, format: uuid}
+        foodId: {type: [string, 'null'], format: uuid}
+        dishName: {type: string}
+        rank: {type: integer, minimum: 1, maximum: 3}
+    RecommendationIngredient:
+      type: object
+      required: [ingredientId, foodId, ingredientName, reason, dishes]
+      properties:
+        ingredientId: {type: string, format: uuid}
+        foodId: {type: string, format: uuid}
+        ingredientName: {type: string}
+        reason: {type: string}
+        dishes:
+          type: array
+          minItems: 2
+          maxItems: 3
+          items: {$ref: '#/components/schemas/RecommendationDish'}
+    RecommendationResponse:
+      type: object
+      required: [recommendationId, status, ingredients, dailyNutrition, nutrientGap]
+      properties:
+        recommendationId: {type: string, format: uuid}
+        status: {type: string, enum: [CREATED, NO_CANDIDATE, SELECTED, SKIPPED]}
+        targetNutrient:
+          type: [string, 'null']
+          enum: [PROTEIN, FIBER, CALCIUM, IRON, POTASSIUM, VITAMIN_A, VITAMIN_C, null]
+          description: 부족분 중 가장 우선적으로 보완할 대표 영양소
+        noRecommendationReason:
+          type: [string, 'null']
+          enum: [BALANCED_MEAL, NO_SAFE_CANDIDATE, null]
+        ingredients: {type: array, items: {$ref: '#/components/schemas/RecommendationIngredient'}}
+        dailyNutrition: {$ref: '#/components/schemas/Nutrition'}
+        nutrientGap: {$ref: '#/components/schemas/NutritionGap'}
+    RecommendationDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision: {type: string, enum: [SELECTED, SKIPPED]}
+        ingredientId: {type: [string, 'null'], format: uuid}
+    RecommendationDecisionResponse:
+      type: object
+      required: [recommendationId, status, decidedAt]
+      properties:
+        recommendationId: {type: string, format: uuid}
+        status: {type: string, enum: [SELECTED, SKIPPED]}
+        selectedIngredientId: {type: [string, 'null'], format: uuid}
+        decidedAt: {type: string, format: date-time}
+    DailyMealsResponse:
+      type: object
+      required: [date, mealCount, meals]
+      properties:
+        date: {type: string, format: date}
+        mealCount: {type: integer, minimum: 0}
+        meals: {type: array, items: {$ref: '#/components/schemas/MealDetailResponse'}}
+    MonthlyNutritionResponse:
+      type: object
+      required: [year, month, recordedDayCount, mealCount, totals, dailyAverage, days]
+      properties:
+        year: {type: integer}
+        month: {type: integer}
+        recordedDayCount: {type: integer, minimum: 0}
+        mealCount: {type: integer, minimum: 0}
+        totals: {$ref: '#/components/schemas/Nutrition'}
+        dailyAverage: {$ref: '#/components/schemas/Nutrition'}
+        days: {type: array, items: {type: object}}
+    RoomResponse:
+      type: object
+      required: [roomId, roomName, createdAt]
+      properties:
+        roomId: {type: string, format: uuid}
+        roomName: {type: string}
+        createdAt: {type: string, format: date-time}
+    RoomJoinResponse:
+      type: object
+      required: [roomId, roomName, joinedAt]
+      properties:
+        roomId: {type: string, format: uuid}
+        roomName: {type: string}
+        joinedAt: {type: string, format: date-time}
+    RoomInviteResponse:
+      type: object
+      required: [inviteId, code, expiresAt]
+      properties:
+        inviteId: {type: string, format: uuid}
+        code: {type: string}
+        expiresAt: {type: string, format: date-time}
+    RoomMembersResponse:
+      type: object
+      required: [roomId, members]
+      properties:
+        roomId: {type: string, format: uuid}
+        members:
+          type: array
+          items:
+            type: object
+            required: [userId, nickname, joinedAt]
+            properties:
+              userId: {type: string, format: uuid}
+              nickname: {type: [string, 'null']}
+              joinedAt: {type: string, format: date-time}
+    ErrorResponse:
+      type: object
+      required: [timestamp, status, code, message, fieldErrors, traceId]
+      properties:
+        timestamp: {type: string, format: date-time}
+        status: {type: integer}
+        code: {type: string}
+        message: {type: string}
+        fieldErrors: {type: array, items: {type: object}}
+        traceId: {type: string}
