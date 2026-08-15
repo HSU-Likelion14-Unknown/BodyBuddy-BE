@@ -33,12 +33,20 @@ public class UserController {
         return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
     }
 
-    @PatchMapping("/me/preferences")
-    public ResponseEntity<SuccessResponse<PreferenceRes>> updatePreferences(
+    @PatchMapping("/me")
+    public ResponseEntity<SuccessResponse<UserProfileUpdateRes>> updateProfile(
             @RequestHeader("Authorization") String authorization,
-            @Valid @RequestBody PreferenceReq req
+            @RequestBody UserProfileUpdateReq req
     ) {
-        PreferenceRes response = userService.updatePreferences(authorization, req);
+        UserProfileUpdateRes response = userService.updateProfile(authorization, req);
         return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<SuccessResponse<?>> deleteUser(
+            @RequestHeader("Authorization") String authorization
+    ) {
+        userService.deleteUser(authorization);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).body(SuccessResponse.empty());
     }
 }
