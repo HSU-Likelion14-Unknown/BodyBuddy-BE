@@ -191,6 +191,99 @@ class MealServiceTest {
     }
 
     @Test
+    void completesConfirmedMeal() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
+        meal.markReviewRequired();
+        meal.confirm(LocalDateTime.now());
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+
+        MealCompleteRes response = mealService.completeMeal(
+                "Bearer raw-access-key",
+                "meal-id"
+        );
+
+        assertThat(response.getStatus()).isEqualTo(MealStatus.COMPLETED);
+        assertThat(response.getCompletedAt()).isNotNull();
+        assertThat(meal.getCompletedAt()).isNotNull();
+    }
+
+    @Test
+    void rejectsCompletionUnlessMealIsConfirmed() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+
+        assertThatThrownBy(() -> mealService.completeMeal(
+                "Bearer raw-access-key",
+                "meal-id"
+        )).isInstanceOfSatisfying(BaseException.class, exception ->
+                assertThat(exception.getBaseResponseCode())
+                        .isEqualTo(ErrorResponseCode.MEAL_COMPLETION_CONFLICT));
+    }
+
+    @Test
+    void updatesConfirmedItemsAndRecalculatesNutrition() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
+        meal.markReviewRequired();
+        meal.confirm(LocalDateTime.now());
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+        when(foodNutritionRepository.findById("food-id"))
+                .thenReturn(Optional.of(foodNutrition()));
+        when(mealItemRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(nutritionSummaryRepository.findById("meal-id")).thenReturn(Optional.empty());
+        when(nutritionSummaryRepository.save(any(MealNutritionSummary.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        MealItemsUpdateReq request = new MealItemsUpdateReq(
+                List.of(new MealItemInputReq(
+                        "food-id", "두부", new BigDecimal("50"), "g"
+                ))
+        );
+
+        MealItemsUpdateRes response = mealService.updateMealItems(
+                "Bearer raw-access-key",
+                "meal-id",
+                request
+        );
+
+        assertThat(response.getStatus()).isEqualTo(MealStatus.CONFIRMED);
+        assertThat(response.getNutritionSummary().getCaloriesKcal())
+                .isEqualByComparingTo("100.00");
+        assertThat(response.getNutritionSummary().getProteinG())
+                .isEqualByComparingTo("5.00");
+        verify(mealItemRepository).deleteAllByMealMealId("meal-id");
+        verify(mealItemRepository).flush();
+        verify(nutritionSummaryRepository).flush();
+    }
+
+    @Test
+    void rejectsItemUpdateUnlessMealIsConfirmed() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+        MealItemsUpdateReq request = new MealItemsUpdateReq(
+                List.of(new MealItemInputReq(
+                        "food-id", "두부", new BigDecimal("50"), "g"
+                ))
+        );
+
+        assertThatThrownBy(() -> mealService.updateMealItems(
+                "Bearer raw-access-key",
+                "meal-id",
+                request
+        )).isInstanceOfSatisfying(BaseException.class, exception ->
+                assertThat(exception.getBaseResponseCode())
+                        .isEqualTo(ErrorResponseCode.MEAL_ITEMS_INVALID));
+        verify(foodNutritionRepository, never()).findById(anyString());
+    }
+
+    @Test
     void permanentlyDeletesMealAndCurrentChildren() {
         authenticate(user);
         Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
