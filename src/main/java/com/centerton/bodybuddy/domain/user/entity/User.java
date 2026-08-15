@@ -48,6 +48,12 @@ public class User extends BaseEntity {
     @Column(name = "onboarding_completed_at")
     private LocalDateTime onboardingCompletedAt;
 
+    @Column(name = "share_to_room", nullable = false)
+    private Boolean shareToRoom;
+
+    @Column(name = "profile_image_url", length = 500)
+    private String profileImageUrl;
+
     public void updateOnboarding(String nickname, Integer birthYear, Gender gender,
                                  List<String> allergyCodes, List<String> dislikedFoods,
                                  LocalDateTime onboardingCompletedAt) {
@@ -57,19 +63,18 @@ public class User extends BaseEntity {
         this.allergyCodes = allergyCodes == null ? List.of() : List.copyOf(allergyCodes);
         this.dislikedFoods = dislikedFoods == null ? List.of() : List.copyOf(dislikedFoods);
         this.onboardingCompletedAt = onboardingCompletedAt;
+        this.shareToRoom = true;
     }
 
-    public void updatePreferences(
-        List<String> allergyCodes,
-        List<String> dislikedFoods
-) {
-    this.allergyCodes = allergyCodes == null
-            ? List.of()
-            : List.copyOf(allergyCodes);
-
-    this.dislikedFoods = dislikedFoods == null
-            ? List.of()
-            : List.copyOf(dislikedFoods);
-}
-
+    public void updateProfile(String nickname, Integer birthYear, Gender gender,
+                              List<String> allergyCodes, List<String> dislikedFoods,
+                              Boolean shareToRoom, String profileImageUrl) {
+        if (nickname != null) this.nickname = nickname;
+        if (birthYear != null) this.birthYear = birthYear;
+        if (gender != null) this.gender = gender;
+        if (allergyCodes != null) this.allergyCodes = List.copyOf(allergyCodes);
+        if (dislikedFoods != null) this.dislikedFoods = List.copyOf(dislikedFoods);
+        if (shareToRoom != null) this.shareToRoom = shareToRoom;
+        if (profileImageUrl != null) this.profileImageUrl = profileImageUrl;
+    }
 }
