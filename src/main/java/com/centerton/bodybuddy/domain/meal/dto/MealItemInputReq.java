@@ -15,7 +15,7 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class MealItemInputReq {
 
-    @NotBlank(message = "음식 ID를 입력해 주세요.")
+    @Size(max = 36, message = "음식 ID는 36자 이하여야 합니다.")
     private String foodId;
 
     @NotBlank(message = "음식명을 입력해 주세요.")

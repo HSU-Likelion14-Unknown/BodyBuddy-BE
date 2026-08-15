@@ -15,6 +15,11 @@ public class NutritionRes {
     private BigDecimal fatG;
     private BigDecimal fiberG;
     private BigDecimal sodiumMg;
+    private BigDecimal calciumMg;
+    private BigDecimal ironMg;
+    private BigDecimal potassiumMg;
+    private BigDecimal vitaminAMcgRae;
+    private BigDecimal vitaminCMg;
 
     public static NutritionRes from(NutritionValues nutrition) {
         if (nutrition == null) {
@@ -27,6 +32,11 @@ public class NutritionRes {
                 .fatG(nutrition.getFatG())
                 .fiberG(nutrition.getFiberG())
                 .sodiumMg(nutrition.getSodiumMg())
+                .calciumMg(nutrition.getCalciumMg())
+                .ironMg(nutrition.getIronMg())
+                .potassiumMg(nutrition.getPotassiumMg())
+                .vitaminAMcgRae(nutrition.getVitaminAMcgRae())
+                .vitaminCMg(nutrition.getVitaminCMg())
                 .build();
     }
 }

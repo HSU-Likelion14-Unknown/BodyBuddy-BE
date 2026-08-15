@@ -4,10 +4,14 @@ import com.centerton.bodybuddy.domain.meal.entity.MealStatus;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.List;
+
 @Getter
 @Builder
 public class MealItemsUpdateRes {
     private String mealId;
     private MealStatus status;
+    private List<MealItemRes> items;
+    private NutritionSummaryStatus nutritionSummaryStatus;
     private NutritionSummaryRes nutritionSummary;
 }

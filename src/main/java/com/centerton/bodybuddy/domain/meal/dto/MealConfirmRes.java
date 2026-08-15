@@ -12,5 +12,6 @@ public class MealConfirmRes {
     private String mealId;
     private MealStatus status;
     private List<MealItemRes> items;
+    private NutritionSummaryStatus nutritionSummaryStatus;
     private NutritionSummaryRes nutritionSummary;
 }

@@ -33,6 +33,7 @@ public class User extends BaseEntity {
     @Column(name = "birth_year")
     private Integer birthYear;
 
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Enumerated(EnumType.STRING)
     @Column(name = "gender", length = 20)
     private Gender gender;

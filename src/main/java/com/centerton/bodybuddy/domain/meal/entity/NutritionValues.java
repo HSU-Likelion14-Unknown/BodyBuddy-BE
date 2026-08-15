@@ -33,4 +33,19 @@ public class NutritionValues {
 
     @Column(name = "sodium_mg", precision = 12, scale = 2)
     private BigDecimal sodiumMg;
+
+    @Column(name = "calcium_mg", precision = 12, scale = 2)
+    private BigDecimal calciumMg;
+
+    @Column(name = "iron_mg", precision = 12, scale = 2)
+    private BigDecimal ironMg;
+
+    @Column(name = "potassium_mg", precision = 12, scale = 2)
+    private BigDecimal potassiumMg;
+
+    @Column(name = "vitamin_a_mcg_rae", precision = 12, scale = 2)
+    private BigDecimal vitaminAMcgRae;
+
+    @Column(name = "vitamin_c_mg", precision = 12, scale = 2)
+    private BigDecimal vitaminCMg;
 }
