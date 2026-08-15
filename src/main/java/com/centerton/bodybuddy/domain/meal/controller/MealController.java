@@ -5,6 +5,8 @@ import com.centerton.bodybuddy.domain.meal.dto.MealCompleteRes;
 import com.centerton.bodybuddy.domain.meal.dto.MealConfirmRes;
 import com.centerton.bodybuddy.domain.meal.dto.MealConfirmReq;
 import com.centerton.bodybuddy.domain.meal.dto.MealDetailRes;
+import com.centerton.bodybuddy.domain.meal.dto.MealItemsUpdateReq;
+import com.centerton.bodybuddy.domain.meal.dto.MealItemsUpdateRes;
 import com.centerton.bodybuddy.domain.meal.dto.TextMealCreateReq;
 import com.centerton.bodybuddy.domain.meal.service.MealService;
 import jakarta.validation.Valid;
@@ -52,6 +54,15 @@ public class MealController {
             @PathVariable String mealId
     ) {
         return ResponseEntity.ok(mealService.completeMeal(authorization, mealId));
+    }
+
+    @PutMapping("/{mealId}/items")
+    public ResponseEntity<MealItemsUpdateRes> updateMealItems(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String mealId,
+            @Valid @RequestBody MealItemsUpdateReq request
+    ) {
+        return ResponseEntity.ok(mealService.updateMealItems(authorization, mealId, request));
     }
 
     @DeleteMapping("/{mealId}")
