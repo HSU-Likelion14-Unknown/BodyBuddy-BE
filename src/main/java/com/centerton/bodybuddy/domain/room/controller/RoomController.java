@@ -20,6 +20,7 @@ public class RoomController {
     private final RoomMemberService roomMemberService;
     private final RoomListService roomListService;
     private final RoomLeaveService roomLeaveService;
+    private final RoomCoverService roomCoverService;
 
     @PostMapping
     public ResponseEntity<SuccessResponse<RoomCreateRes>> createRoom(
@@ -72,5 +73,15 @@ public class RoomController {
     ) {
         roomLeaveService.leaveRoom(authorization, roomId);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).body(SuccessResponse.empty());
+    }
+
+    @PatchMapping("/{roomId}/cover")
+    public ResponseEntity<SuccessResponse<RoomCoverUpdateRes>> updateCover(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId,
+            @Valid @RequestBody RoomCoverUpdateReq req
+    ) {
+        RoomCoverUpdateRes response = roomCoverService.updateCover(authorization, roomId, req);
+        return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
     }
 }
