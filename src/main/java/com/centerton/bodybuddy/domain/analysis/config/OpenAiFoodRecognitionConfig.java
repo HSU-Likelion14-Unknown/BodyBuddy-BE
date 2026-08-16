@@ -20,12 +20,12 @@ public class OpenAiFoodRecognitionConfig {
 
     @Bean
     @Qualifier("openAiRestClient")
-    RestClient openAiRestClient(RestClient.Builder builder, OpenAiProperties properties) {
+    RestClient openAiRestClient(OpenAiProperties properties) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(properties.getConnectTimeout());
         requestFactory.setReadTimeout(properties.getReadTimeout());
 
-        return builder
+        return RestClient.builder()
                 .baseUrl(properties.getBaseUrl().toString())
                 .requestFactory(requestFactory)
                 .defaultHeader(
