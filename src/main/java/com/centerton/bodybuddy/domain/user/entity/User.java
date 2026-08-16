@@ -49,8 +49,9 @@ public class User extends BaseEntity {
     @Column(name = "onboarding_completed_at")
     private LocalDateTime onboardingCompletedAt;
 
+    @Builder.Default
     @Column(name = "share_to_room", nullable = false)
-    private Boolean shareToRoom;
+    private Boolean shareToRoom = false;
 
     @Column(name = "profile_image_url", length = 500)
     private String profileImageUrl;

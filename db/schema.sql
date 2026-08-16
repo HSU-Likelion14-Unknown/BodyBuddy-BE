@@ -17,6 +17,7 @@ CREATE TABLE users (
     allergies JSON NULL COMMENT 'Array of standardized allergy codes, e.g. ["EGG","MILK"]',
     disliked_foods JSON NULL COMMENT 'Array of normalized food names, e.g. ["고수","가지"]',
     onboarding_completed_at DATETIME(6) NULL,
+    share_to_room BOOLEAN NOT NULL DEFAULT FALSE,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (user_id),
