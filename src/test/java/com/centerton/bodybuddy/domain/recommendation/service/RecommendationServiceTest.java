@@ -37,6 +37,8 @@ import com.centerton.bodybuddy.global.response.code.ErrorResponseCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -44,6 +46,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -52,9 +55,11 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -104,8 +109,10 @@ class RecommendationServiceTest {
                 .build();
         authenticate();
         when(idempotencyKeyRepository.findById("create-key")).thenReturn(Optional.empty());
-        when(mealRepository.findByMealIdAndUserUserId(meal.getMealId(), "user-id"))
+        when(mealRepository.findOwnedByIdForUpdate(meal.getMealId(), "user-id"))
                 .thenReturn(Optional.of(meal));
+        reserveNewKey();
+        completeReservation();
         when(recommendationRepository.findByMealMealId(meal.getMealId()))
                 .thenReturn(Optional.empty());
         when(planningService.plan(user, LocalDate.of(2026, 8, 16), 3)).thenReturn(plan);
@@ -135,7 +142,10 @@ class RecommendationServiceTest {
         assertThat(captor.getValue().getTargetNutrient()).isEqualTo(TargetNutrient.IRON);
         verify(ingredientRepository).save(any(RecommendationIngredient.class));
         verify(dishRepository).saveAll(anyList());
-        verify(idempotencyKeyRepository).save(any(IdempotencyKey.class));
+        verify(idempotencyKeyRepository).reserve(
+                "create-key", "user-id", "RECOMMENDATION_CREATE", fingerprint(meal));
+        verify(idempotencyKeyRepository).completeReservation(
+                "create-key", captor.getValue().getRecommendationId());
     }
 
     @Test
@@ -203,7 +213,44 @@ class RecommendationServiceTest {
 
         assertThat(result.createdNow()).isFalse();
         assertThat(result.response()).isSameAs(assembled);
-        verify(planningService, never()).plan(any(), any(), any(Integer.class));
+        verify(planningService, never()).plan(any(), any(), anyInt());
+    }
+
+    @Test
+    void replaysCreationWhenConcurrentRequestWonIdempotencyReservation() {
+        Meal meal = confirmedMeal(LocalDateTime.of(2026, 8, 16, 1, 0));
+        Recommendation recommendation = recommendation(meal);
+        RecommendationRes assembled = response(recommendation);
+        String fingerprint = fingerprint(meal);
+        IdempotencyKey completedKey = idempotency(
+                "same-key",
+                "RECOMMENDATION_CREATE",
+                fingerprint,
+                recommendation.getRecommendationId()
+        );
+        authenticate();
+        when(idempotencyKeyRepository.findById("same-key"))
+                .thenReturn(Optional.empty(), Optional.of(completedKey));
+        when(mealRepository.findOwnedByIdForUpdate(meal.getMealId(), "user-id"))
+                .thenReturn(Optional.of(meal));
+        when(idempotencyKeyRepository.reserve(
+                "same-key", "user-id", "RECOMMENDATION_CREATE", fingerprint))
+                .thenReturn(0);
+        when(recommendationRepository.findByRecommendationIdAndUserUserId(
+                recommendation.getRecommendationId(), "user-id"))
+                .thenReturn(Optional.of(recommendation));
+        when(responseAssembler.assemble(recommendation)).thenReturn(assembled);
+
+        RecommendationCreationResult result = recommendationService.create(
+                AUTHORIZATION,
+                "same-key",
+                meal.getMealId()
+        );
+
+        assertThat(result.createdNow()).isFalse();
+        assertThat(result.response()).isSameAs(assembled);
+        verify(planningService, never()).plan(any(), any(), anyInt());
+        verify(recommendationRepository, never()).save(any());
     }
 
     @Test
@@ -211,7 +258,7 @@ class RecommendationServiceTest {
         Meal meal = Meal.createText(user, "식사", LocalDateTime.now());
         authenticate();
         when(idempotencyKeyRepository.findById("create-key")).thenReturn(Optional.empty());
-        when(mealRepository.findByMealIdAndUserUserId(meal.getMealId(), "user-id"))
+        when(mealRepository.findOwnedByIdForUpdate(meal.getMealId(), "user-id"))
                 .thenReturn(Optional.of(meal));
 
         assertThatThrownBy(() -> recommendationService.create(
@@ -230,9 +277,11 @@ class RecommendationServiceTest {
         RecommendationIngredient ingredient = ingredient(recommendation);
         authenticate();
         when(idempotencyKeyRepository.findById("decision-key")).thenReturn(Optional.empty());
-        when(recommendationRepository.findByRecommendationIdAndUserUserId(
+        when(recommendationRepository.findOwnedByIdForUpdate(
                 recommendation.getRecommendationId(), "user-id"))
                 .thenReturn(Optional.of(recommendation));
+        reserveNewKey();
+        completeReservation();
         when(ingredientRepository.findByIngredientIdAndRecommendationRecommendationId(
                 ingredient.getIngredientId(), recommendation.getRecommendationId()))
                 .thenReturn(Optional.of(ingredient));
@@ -252,7 +301,8 @@ class RecommendationServiceTest {
         assertThat(result.getStatus()).isEqualTo(RecommendationStatus.SELECTED);
         assertThat(result.getSelectedIngredientId()).isEqualTo(ingredient.getIngredientId());
         assertThat(recommendation.getStatus()).isEqualTo(RecommendationStatus.SELECTED);
-        verify(idempotencyKeyRepository).save(any(IdempotencyKey.class));
+        verify(idempotencyKeyRepository).completeReservation(
+                "decision-key", recommendation.getRecommendationId());
     }
 
     @Test
@@ -261,9 +311,11 @@ class RecommendationServiceTest {
         Recommendation recommendation = recommendation(meal);
         authenticate();
         when(idempotencyKeyRepository.findById("decision-key")).thenReturn(Optional.empty());
-        when(recommendationRepository.findByRecommendationIdAndUserUserId(
+        when(recommendationRepository.findOwnedByIdForUpdate(
                 recommendation.getRecommendationId(), "user-id"))
                 .thenReturn(Optional.of(recommendation));
+        reserveNewKey();
+        completeReservation();
         when(decisionRepository.save(any(RecommendationDecision.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -279,15 +331,151 @@ class RecommendationServiceTest {
         assertThat(recommendation.getStatus()).isEqualTo(RecommendationStatus.SKIPPED);
     }
 
+    @ParameterizedTest
+    @EnumSource(RecommendationDecisionType.class)
+    void replaysDecisionForSameIdempotencyKeyWithoutSavingAgain(
+            RecommendationDecisionType decisionType
+    ) {
+        Meal meal = confirmedMeal(LocalDateTime.now());
+        Recommendation recommendation = recommendation(meal);
+        RecommendationIngredient ingredient = decisionType == RecommendationDecisionType.SELECTED
+                ? ingredient(recommendation)
+                : null;
+        String ingredientId = ingredient == null ? null : ingredient.getIngredientId();
+        RecommendationDecisionReq request = new RecommendationDecisionReq(
+                decisionType,
+                ingredientId
+        );
+        LocalDateTime decidedAt = LocalDateTime.of(2026, 8, 17, 1, 30);
+        RecommendationDecision savedDecision = RecommendationDecision.builder()
+                .recommendation(recommendation)
+                .ingredient(ingredient)
+                .decision(decisionType)
+                .decidedAt(decidedAt)
+                .build();
+        String fingerprint = AccessKeyGenerator.hash(
+                "RECOMMENDATION_DECISION:"
+                        + recommendation.getRecommendationId() + ":"
+                        + decisionType + ":"
+                        + (ingredientId == null ? "" : ingredientId)
+        );
+        IdempotencyKey completedKey = idempotency(
+                "decision-key",
+                "RECOMMENDATION_DECISION",
+                fingerprint,
+                recommendation.getRecommendationId()
+        );
+        authenticate();
+        when(idempotencyKeyRepository.findById("decision-key"))
+                .thenReturn(Optional.empty(), Optional.of(completedKey));
+        when(recommendationRepository.findOwnedByIdForUpdate(
+                recommendation.getRecommendationId(), "user-id"))
+                .thenReturn(Optional.of(recommendation));
+        when(idempotencyKeyRepository.reserve(
+                "decision-key", "user-id", "RECOMMENDATION_DECISION", fingerprint))
+                .thenReturn(1);
+        when(idempotencyKeyRepository.completeReservation(
+                "decision-key", recommendation.getRecommendationId())).thenReturn(1);
+        if (ingredient != null) {
+            when(ingredientRepository.findByIngredientIdAndRecommendationRecommendationId(
+                    ingredientId,
+                    recommendation.getRecommendationId()
+            )).thenReturn(Optional.of(ingredient));
+        }
+        when(decisionRepository.save(any(RecommendationDecision.class)))
+                .thenReturn(savedDecision);
+        when(recommendationRepository.findByRecommendationIdAndUserUserId(
+                recommendation.getRecommendationId(), "user-id"))
+                .thenReturn(Optional.of(recommendation));
+        when(decisionRepository.findById(recommendation.getRecommendationId()))
+                .thenReturn(Optional.of(savedDecision));
+
+        RecommendationDecisionRes first = recommendationService.decide(
+                AUTHORIZATION,
+                "decision-key",
+                recommendation.getRecommendationId(),
+                request
+        );
+        RecommendationDecisionRes replay = recommendationService.decide(
+                AUTHORIZATION,
+                "decision-key",
+                recommendation.getRecommendationId(),
+                request
+        );
+
+        assertThat(replay.getStatus()).isEqualTo(first.getStatus());
+        assertThat(replay.getSelectedIngredientId()).isEqualTo(first.getSelectedIngredientId());
+        assertThat(replay.getDecidedAt()).isEqualTo(first.getDecidedAt());
+        verify(decisionRepository, times(1)).save(any(RecommendationDecision.class));
+        verify(recommendationRepository, times(1)).findOwnedByIdForUpdate(
+                recommendation.getRecommendationId(), "user-id");
+        verify(idempotencyKeyRepository, times(1)).reserve(
+                "decision-key", "user-id", "RECOMMENDATION_DECISION", fingerprint);
+    }
+
+    @Test
+    void replaysDecisionWhenConcurrentRequestWonIdempotencyReservation() {
+        Meal meal = confirmedMeal(LocalDateTime.now());
+        Recommendation recommendation = recommendation(meal);
+        LocalDateTime decidedAt = LocalDateTime.of(2026, 8, 17, 1, 30);
+        RecommendationDecision savedDecision = RecommendationDecision.builder()
+                .recommendation(recommendation)
+                .decision(RecommendationDecisionType.SKIPPED)
+                .decidedAt(decidedAt)
+                .build();
+        recommendation.skip();
+        RecommendationDecisionReq request = new RecommendationDecisionReq(
+                RecommendationDecisionType.SKIPPED,
+                null
+        );
+        String fingerprint = AccessKeyGenerator.hash(
+                "RECOMMENDATION_DECISION:"
+                        + recommendation.getRecommendationId()
+                        + ":SKIPPED:"
+        );
+        IdempotencyKey completedKey = idempotency(
+                "decision-key",
+                "RECOMMENDATION_DECISION",
+                fingerprint,
+                recommendation.getRecommendationId()
+        );
+        authenticate();
+        when(idempotencyKeyRepository.findById("decision-key"))
+                .thenReturn(Optional.empty(), Optional.of(completedKey));
+        when(recommendationRepository.findOwnedByIdForUpdate(
+                recommendation.getRecommendationId(), "user-id"))
+                .thenReturn(Optional.of(recommendation));
+        when(idempotencyKeyRepository.reserve(
+                "decision-key", "user-id", "RECOMMENDATION_DECISION", fingerprint))
+                .thenReturn(0);
+        when(recommendationRepository.findByRecommendationIdAndUserUserId(
+                recommendation.getRecommendationId(), "user-id"))
+                .thenReturn(Optional.of(recommendation));
+        when(decisionRepository.findById(recommendation.getRecommendationId()))
+                .thenReturn(Optional.of(savedDecision));
+
+        RecommendationDecisionRes result = recommendationService.decide(
+                AUTHORIZATION,
+                "decision-key",
+                recommendation.getRecommendationId(),
+                request
+        );
+
+        assertThat(result.getStatus()).isEqualTo(RecommendationStatus.SKIPPED);
+        assertThat(result.getDecidedAt()).isEqualTo(decidedAt.atOffset(ZoneOffset.UTC));
+        verify(decisionRepository, never()).save(any());
+    }
+
     @Test
     void rejectsIngredientThatDoesNotBelongToRecommendation() {
         Meal meal = confirmedMeal(LocalDateTime.now());
         Recommendation recommendation = recommendation(meal);
         authenticate();
         when(idempotencyKeyRepository.findById("decision-key")).thenReturn(Optional.empty());
-        when(recommendationRepository.findByRecommendationIdAndUserUserId(
+        when(recommendationRepository.findOwnedByIdForUpdate(
                 recommendation.getRecommendationId(), "user-id"))
                 .thenReturn(Optional.of(recommendation));
+        reserveNewKey();
         when(ingredientRepository.findByIngredientIdAndRecommendationRecommendationId(
                 "other-ingredient", recommendation.getRecommendationId()))
                 .thenReturn(Optional.empty());
@@ -309,8 +497,10 @@ class RecommendationServiceTest {
     private void prepareCreation(Meal meal, RecommendationPlan plan) {
         authenticate();
         when(idempotencyKeyRepository.findById("create-key")).thenReturn(Optional.empty());
-        when(mealRepository.findByMealIdAndUserUserId(meal.getMealId(), "user-id"))
+        when(mealRepository.findOwnedByIdForUpdate(meal.getMealId(), "user-id"))
                 .thenReturn(Optional.of(meal));
+        reserveNewKey();
+        completeReservation();
         when(recommendationRepository.findByMealMealId(meal.getMealId()))
                 .thenReturn(Optional.empty());
         when(planningService.plan(user, LocalDate.of(2026, 8, 16), 3)).thenReturn(plan);
@@ -320,6 +510,16 @@ class RecommendationServiceTest {
 
     private void authenticate() {
         when(userRepository.findByAccessKeyHash(anyString())).thenReturn(Optional.of(user));
+    }
+
+    private void reserveNewKey() {
+        when(idempotencyKeyRepository.reserve(
+                anyString(), anyString(), anyString(), anyString())).thenReturn(1);
+    }
+
+    private void completeReservation() {
+        when(idempotencyKeyRepository.completeReservation(
+                anyString(), anyString())).thenReturn(1);
     }
 
     private Meal confirmedMeal(LocalDateTime eatenAtUtc) {
@@ -419,6 +619,10 @@ class RecommendationServiceTest {
                 .requestFingerprint(fingerprint)
                 .resourceId(resourceId)
                 .build();
+    }
+
+    private String fingerprint(Meal meal) {
+        return AccessKeyGenerator.hash("RECOMMENDATION_CREATE:" + meal.getMealId());
     }
 
     private BigDecimal value(String value) {

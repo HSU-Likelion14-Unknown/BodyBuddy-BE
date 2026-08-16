@@ -81,11 +81,19 @@ public class RecommendationService {
             return previous;
         }
 
-        Meal meal = mealRepository.findByMealIdAndUserUserId(mealId, user.getUserId())
+        Meal meal = mealRepository.findOwnedByIdForUpdate(mealId, user.getUserId())
                 .orElseThrow(() -> new BaseException(ErrorResponseCode.MEAL_NOT_FOUND));
         if (meal.getStatus() != MealStatus.CONFIRMED
                 && meal.getStatus() != MealStatus.COMPLETED) {
             throw new BaseException(ErrorResponseCode.RECOMMENDATION_CREATION_CONFLICT);
+        }
+        if (!reserveIdempotencyKey(
+                idempotencyKey,
+                user,
+                RECOMMENDATION_CREATE,
+                fingerprint
+        )) {
+            return requireIdempotentCreation(idempotencyKey, user, fingerprint);
         }
         if (recommendationRepository.findByMealMealId(mealId).isPresent()) {
             throw new BaseException(ErrorResponseCode.RECOMMENDATION_ALREADY_EXISTS);
@@ -98,11 +106,8 @@ public class RecommendationService {
                 RECOMMENDED_INGREDIENT_LIMIT
         );
         Recommendation recommendation = saveRecommendation(user, meal, recommendationDate, plan);
-        saveIdempotencyKey(
+        completeIdempotencyKey(
                 idempotencyKey,
-                user,
-                RECOMMENDATION_CREATE,
-                fingerprint,
                 recommendation.getRecommendationId()
         );
         return new RecommendationCreationResult(
@@ -132,8 +137,16 @@ public class RecommendationService {
         }
 
         Recommendation recommendation = recommendationRepository
-                .findByRecommendationIdAndUserUserId(recommendationId, user.getUserId())
+                .findOwnedByIdForUpdate(recommendationId, user.getUserId())
                 .orElseThrow(() -> new BaseException(ErrorResponseCode.RECOMMENDATION_NOT_FOUND));
+        if (!reserveIdempotencyKey(
+                idempotencyKey,
+                user,
+                RECOMMENDATION_DECISION,
+                fingerprint
+        )) {
+            return requireIdempotentDecision(idempotencyKey, user, fingerprint);
+        }
         if (recommendation.getStatus() != RecommendationStatus.CREATED) {
             throw new BaseException(ErrorResponseCode.RECOMMENDATION_DECISION_CONFLICT);
         }
@@ -157,11 +170,8 @@ public class RecommendationService {
         } else {
             recommendation.skip();
         }
-        saveIdempotencyKey(
+        completeIdempotencyKey(
                 idempotencyKey,
-                user,
-                RECOMMENDATION_DECISION,
-                fingerprint,
                 recommendationId
         );
         return decisionResponse(decision);
@@ -287,6 +297,18 @@ public class RecommendationService {
         );
     }
 
+    private RecommendationCreationResult requireIdempotentCreation(
+            String key,
+            User user,
+            String fingerprint
+    ) {
+        RecommendationCreationResult result = findIdempotentCreation(key, user, fingerprint);
+        if (result == null) {
+            throw new BaseException(ErrorResponseCode.IDEMPOTENCY_KEY_REUSED);
+        }
+        return result;
+    }
+
     private RecommendationDecisionRes findIdempotentDecision(
             String key,
             User user,
@@ -309,6 +331,18 @@ public class RecommendationService {
         return decisionResponse(decision);
     }
 
+    private RecommendationDecisionRes requireIdempotentDecision(
+            String key,
+            User user,
+            String fingerprint
+    ) {
+        RecommendationDecisionRes result = findIdempotentDecision(key, user, fingerprint);
+        if (result == null) {
+            throw new BaseException(ErrorResponseCode.IDEMPOTENCY_KEY_REUSED);
+        }
+        return result;
+    }
+
     private void requireSameIdempotentRequest(IdempotencyKey record, User user,
                                               String operation, String fingerprint) {
         boolean same = user.getUserId().equals(record.getUserId())
@@ -320,15 +354,20 @@ public class RecommendationService {
         }
     }
 
-    private void saveIdempotencyKey(String key, User user, String operation,
-                                    String fingerprint, String resourceId) {
-        idempotencyKeyRepository.save(IdempotencyKey.builder()
-                .idempotencyKey(key)
-                .userId(user.getUserId())
-                .operation(operation)
-                .requestFingerprint(fingerprint)
-                .resourceId(resourceId)
-                .build());
+    private boolean reserveIdempotencyKey(String key, User user,
+                                          String operation, String fingerprint) {
+        return idempotencyKeyRepository.reserve(
+                key,
+                user.getUserId(),
+                operation,
+                fingerprint
+        ) == 1;
+    }
+
+    private void completeIdempotencyKey(String key, String resourceId) {
+        if (idempotencyKeyRepository.completeReservation(key, resourceId) != 1) {
+            throw new BaseException(ErrorResponseCode.SERVER_ERROR);
+        }
     }
 
     private RecommendationDecisionRes decisionResponse(RecommendationDecision decision) {
