@@ -23,6 +23,9 @@ import com.centerton.bodybuddy.domain.meal.repository.MealNutritionSummaryReposi
 import com.centerton.bodybuddy.domain.meal.repository.MealRepository;
 import com.centerton.bodybuddy.domain.meal.storage.MealImageStorage;
 import com.centerton.bodybuddy.domain.meal.storage.ValidatedMealImage;
+import com.centerton.bodybuddy.domain.recommendation.dto.RecommendationRes;
+import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationStatus;
+import com.centerton.bodybuddy.domain.recommendation.service.RecommendationQueryService;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import com.centerton.bodybuddy.domain.user.repository.UserRepository;
 import com.centerton.bodybuddy.global.exception.BaseException;
@@ -64,6 +67,7 @@ class MealServiceTest {
     @Mock private IdempotencyKeyRepository idempotencyKeyRepository;
     @Mock private MealImageStorage imageStorage;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private RecommendationQueryService recommendationQueryService;
 
     private MealService mealService;
     private User user;
@@ -79,7 +83,8 @@ class MealServiceTest {
                 foodMatchingService,
                 idempotencyKeyRepository,
                 imageStorage,
-                eventPublisher
+                eventPublisher,
+                recommendationQueryService
         );
         user = User.builder()
                 .userId("user-id")
@@ -523,6 +528,33 @@ class MealServiceTest {
         verify(analysisRunRepository).deleteAllByMealMealId("meal-id");
         verify(mealItemRepository).deleteAllByMealMealId("meal-id");
         verify(mealRepository).delete(meal);
+    }
+
+    @Test
+    void includesPersistedRecommendationInMealDetail() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "식사", LocalDateTime.now());
+        RecommendationRes recommendation = RecommendationRes.builder()
+                .recommendationId("recommendation-id")
+                .status(RecommendationStatus.CREATED)
+                .build();
+        when(mealRepository.findByMealIdAndUserUserId(meal.getMealId(), "user-id"))
+                .thenReturn(Optional.of(meal));
+        when(analysisRunRepository.findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(
+                meal.getMealId(), AnalysisStatus.SUCCEEDED)).thenReturn(Optional.empty());
+        when(mealItemRepository.findAllByMealMealIdOrderBySortOrderAsc(meal.getMealId()))
+                .thenReturn(List.of());
+        when(nutritionSummaryRepository.findById(meal.getMealId()))
+                .thenReturn(Optional.empty());
+        when(recommendationQueryService.findByMealId(meal.getMealId()))
+                .thenReturn(recommendation);
+
+        MealDetailRes result = mealService.getMeal(
+                "Bearer raw-access-key",
+                meal.getMealId()
+        );
+
+        assertThat(result.getRecommendation()).isSameAs(recommendation);
     }
 
     private void authenticate(User authenticatedUser) {
