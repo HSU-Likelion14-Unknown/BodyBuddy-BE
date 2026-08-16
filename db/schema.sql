@@ -344,10 +344,12 @@ CREATE TABLE recommendations (
     status VARCHAR(24) NOT NULL,
     target_nutrient VARCHAR(40) NULL,
     no_recommendation_reason VARCHAR(80) NULL,
+    daily_nutrition JSON NOT NULL,
+    nutrient_gap JSON NOT NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (recommendation_id),
-    UNIQUE KEY uk_recommendations_user_date (user_id, recommendation_date),
+    INDEX idx_recommendations_user_date (user_id, recommendation_date),
     UNIQUE KEY uk_recommendations_meal (meal_id),
     CONSTRAINT chk_recommendations_status CHECK (status IN ('CREATED', 'NO_CANDIDATE', 'SELECTED', 'SKIPPED')),
     CONSTRAINT chk_recommendations_no_candidate CHECK (
