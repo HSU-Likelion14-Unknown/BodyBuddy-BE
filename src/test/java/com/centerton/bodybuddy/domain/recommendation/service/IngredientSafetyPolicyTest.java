@@ -29,6 +29,22 @@ class IngredientSafetyPolicyTest {
     }
 
     @Test
+    void comparesAllergenAliasesByTheirCanonicalKeywordGroup() {
+        assertThat(policy.areAllergensCompatible(
+                List.of("SOYBEAN"),
+                List.of("대두")
+        )).isFalse();
+        assertThat(policy.areAllergensCompatible(
+                List.of("MILK"),
+                List.of("EGG")
+        )).isTrue();
+        assertThat(policy.areAllergensCompatible(
+                List.of(),
+                List.of("UNKNOWN_ALLERGEN")
+        )).isFalse();
+    }
+
+    @Test
     void doesNotMatchAllergenAcrossIngredientAndCanonicalNameBoundary() {
         assertThat(policy.isAllowed(food("계", "란"), List.of("EGG"), List.of())).isTrue();
     }
