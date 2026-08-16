@@ -17,8 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -28,22 +30,63 @@ public class IngredientRankingService {
 
     private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
     private static final int SCORE_SCALE = 8;
+    private static final int CANDIDATE_QUERY_BATCH_SIZE = 100;
 
     private final FoodNutritionRepository foodNutritionRepository;
     private final IngredientSafetyPolicy safetyPolicy;
 
     @Transactional(readOnly = true)
     public List<RankedIngredient> rank(User user, NutritionGapResult gapResult, int limit) {
-        if (limit <= 0 || gapResult.target().isEmpty()) {
+        if (!canRank(user, gapResult, limit)) {
             return List.of();
         }
-        if (!safetyPolicy.canEvaluate(user.getAllergyCodes())) {
-            return List.of();
-        }
+        return rankCandidates(
+                user,
+                gapResult,
+                limit,
+                foodNutritionRepository.findRecommendationCandidates()
+        );
+    }
 
+    @Transactional(readOnly = true)
+    public List<RankedIngredient> rankMappable(User user,
+                                              NutritionGapResult gapResult,
+                                              Collection<String> mappableFoodIds) {
+        if (mappableFoodIds == null || mappableFoodIds.isEmpty()
+                || !canRank(user, gapResult, Integer.MAX_VALUE)) {
+            return List.of();
+        }
+        Set<String> uniqueIds = mappableFoodIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        List<String> uniqueFoodIds = new ArrayList<>(uniqueIds);
+        if (uniqueFoodIds.isEmpty()) {
+            return List.of();
+        }
+        List<FoodNutrition> candidates = new ArrayList<>();
+        for (int start = 0; start < uniqueFoodIds.size(); start += CANDIDATE_QUERY_BATCH_SIZE) {
+            int end = Math.min(start + CANDIDATE_QUERY_BATCH_SIZE, uniqueFoodIds.size());
+            candidates.addAll(foodNutritionRepository.findRecommendationCandidatesByFoodIds(
+                    uniqueFoodIds.subList(start, end)
+            ));
+        }
+        return rankCandidates(user, gapResult, uniqueFoodIds.size(), candidates);
+    }
+
+    private boolean canRank(User user, NutritionGapResult gapResult, int limit) {
+        return user != null
+                && gapResult != null
+                && limit > 0
+                && gapResult.target().isPresent()
+                && safetyPolicy.canEvaluate(user.getAllergyCodes());
+    }
+
+    private List<RankedIngredient> rankCandidates(User user,
+                                                  NutritionGapResult gapResult,
+                                                  int limit,
+                                                  List<FoodNutrition> candidates) {
         TargetNutrient target = gapResult.target().orElseThrow();
-        List<CandidateScore> scores = foodNutritionRepository.findRecommendationCandidates()
-                .stream()
+        List<CandidateScore> scores = candidates.stream()
                 .filter(this::eligibleCandidate)
                 .filter(candidate -> safetyPolicy.isAllowed(
                         candidate.getFood(),

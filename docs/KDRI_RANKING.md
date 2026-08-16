@@ -49,6 +49,8 @@ https://www.kns.or.kr/fileroom/fileroom_view.asp?BoardID=Kdr&idx=167
 알레르기 표시 대상 참고:
 https://www.law.go.kr/LSW/cgmExpcInfoP.do?cgmExpcDatSeq=419496&mode=2&ofiClsCd=350123
 
-## 후속 연결
+## 요리 매핑 연결
 
-이 단계는 계산 및 랭킹 서비스만 제공한다. 원재료별 요리 매핑과 추천 저장·응답 API는 후속 작업에서 `RecommendationNutritionAnalysisService` 결과를 사용해 완성한다.
+`RecommendationPlanningService`가 전체 원재료 랭킹에서 DB 매핑이 있고 안전한 요리를 2개 이상 확보한 원재료를 최대 3개 선택한다. 상세 매핑 및 안전 정책은 `INGREDIENT_DISH_MAPPING.md`를 따른다.
+
+추천 저장·응답 API와 실제 AI 설명·재정렬은 후속 작업에서 이 결과를 사용해 완성한다.

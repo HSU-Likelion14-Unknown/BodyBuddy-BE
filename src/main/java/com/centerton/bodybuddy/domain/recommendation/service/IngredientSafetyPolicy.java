@@ -5,6 +5,7 @@ import com.centerton.bodybuddy.domain.food.service.FoodNameNormalizer;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -19,6 +20,23 @@ public class IngredientSafetyPolicy {
         return safeList(allergyCodes).stream()
                 .map(this::normalizeCode)
                 .allMatch(ALLERGEN_KEYWORDS::containsKey);
+    }
+
+    public boolean areAllergensCompatible(List<String> userAllergyCodes,
+                                          List<String> foodAllergenCodes) {
+        if (!canEvaluate(userAllergyCodes) || !canEvaluate(foodAllergenCodes)) {
+            return false;
+        }
+        Set<String> avoidedKeywords = new HashSet<>();
+        safeList(userAllergyCodes).stream()
+                .map(this::normalizeCode)
+                .map(ALLERGEN_KEYWORDS::get)
+                .forEach(avoidedKeywords::addAll);
+        return safeList(foodAllergenCodes).stream()
+                .map(this::normalizeCode)
+                .map(ALLERGEN_KEYWORDS::get)
+                .flatMap(Set::stream)
+                .noneMatch(avoidedKeywords::contains);
     }
 
     public boolean isAllowed(Food food, List<String> allergyCodes,

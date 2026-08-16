@@ -68,6 +68,40 @@ class RecommendationNutritionAnalysisServiceTest {
         verify(ingredientRankingService).rank(user, gap, 5);
     }
 
+    @Test
+    void limitsNutritionRankingToMappableFoodIds() {
+        User user = User.builder().userId("user-id").build();
+        LocalDate date = LocalDate.of(2026, 8, 16);
+        KdrReferenceValues reference = new KdrReferenceValues(
+                value("65"), value("30"), value("800"), value("8"),
+                value("3500"), value("800"), value("100")
+        );
+        NutritionValues dailyNutrition = NutritionValues.builder().build();
+        NutritionGapResult gap = new NutritionGapResult(
+                reference,
+                dailyNutrition,
+                Map.of(),
+                null
+        );
+        List<String> foodIds = List.of("spinach", "broccoli");
+
+        when(referenceProvider.referenceFor(user, date)).thenReturn(reference);
+        when(dailyNutritionService.sumForDate("user-id", date)).thenReturn(dailyNutrition);
+        when(gapCalculator.calculate(reference, dailyNutrition)).thenReturn(gap);
+        when(ingredientRankingService.rankMappable(user, gap, foodIds))
+                .thenReturn(List.of());
+
+        RecommendationNutritionAnalysis result = analysisService.analyzeMappable(
+                user,
+                date,
+                foodIds
+        );
+
+        assertThat(result.nutritionGap()).isSameAs(gap);
+        assertThat(result.ingredients()).isEmpty();
+        verify(ingredientRankingService).rankMappable(user, gap, foodIds);
+    }
+
     private BigDecimal value(String value) {
         return new BigDecimal(value);
     }

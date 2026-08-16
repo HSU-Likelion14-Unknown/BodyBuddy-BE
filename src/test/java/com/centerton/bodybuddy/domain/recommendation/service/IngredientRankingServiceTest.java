@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
@@ -139,6 +140,30 @@ class IngredientRankingServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.getFirst().ingredientName()).isEqualTo("시금치");
+    }
+
+    @Test
+    void loadsOnlyMappableCandidatesInBoundedBatches() {
+        List<String> foodIds = IntStream.rangeClosed(1, 101)
+                .mapToObj(number -> "food-" + number)
+                .toList();
+        List<String> firstBatch = foodIds.subList(0, 100);
+        List<String> secondBatch = foodIds.subList(100, 101);
+        when(foodNutritionRepository.findRecommendationCandidatesByFoodIds(firstBatch))
+                .thenReturn(List.of());
+        when(foodNutritionRepository.findRecommendationCandidatesByFoodIds(secondBatch))
+                .thenReturn(List.of());
+
+        List<RankedIngredient> result = rankingService.rankMappable(
+                user(List.of(), List.of()),
+                ironGap(),
+                foodIds
+        );
+
+        assertThat(result).isEmpty();
+        verify(foodNutritionRepository).findRecommendationCandidatesByFoodIds(firstBatch);
+        verify(foodNutritionRepository).findRecommendationCandidatesByFoodIds(secondBatch);
+        verify(foodNutritionRepository, never()).findRecommendationCandidates();
     }
 
     private NutritionGapResult ironGap() {
