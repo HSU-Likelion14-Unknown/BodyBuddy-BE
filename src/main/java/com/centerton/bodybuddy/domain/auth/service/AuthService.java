@@ -37,6 +37,7 @@ public class AuthService {
         User user = User.builder()
                 .userId(UUID.randomUUID().toString())
                 .accessKeyHash(accessKeyHash)
+                .shareToRoom(true)
                 .build();
         userRepository.save(user);
 

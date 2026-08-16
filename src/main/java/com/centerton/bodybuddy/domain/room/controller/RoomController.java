@@ -6,8 +6,10 @@ import com.centerton.bodybuddy.global.response.SuccessResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/rooms")
@@ -20,6 +22,7 @@ public class RoomController {
     private final RoomMemberService roomMemberService;
     private final RoomListService roomListService;
     private final RoomLeaveService roomLeaveService;
+    private final RoomCoverService roomCoverService;
 
     @PostMapping
     public ResponseEntity<SuccessResponse<RoomCreateRes>> createRoom(
@@ -72,5 +75,15 @@ public class RoomController {
     ) {
         roomLeaveService.leaveRoom(authorization, roomId);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).body(SuccessResponse.empty());
+    }
+
+    @PatchMapping(value = "/{roomId}/cover", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<SuccessResponse<RoomCoverUpdateRes>> updateCover(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId,
+            @RequestParam("image") MultipartFile image
+    ) {
+        RoomCoverUpdateRes response = roomCoverService.updateCover(authorization, roomId, image);
+        return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
     }
 }

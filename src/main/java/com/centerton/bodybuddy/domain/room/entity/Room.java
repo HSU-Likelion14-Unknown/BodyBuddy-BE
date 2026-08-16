@@ -24,4 +24,11 @@ public class Room extends BaseEntity {
 
     @Column(name = "user_id", nullable = false, length = 36)
     private String userId;
+
+    @Column(name = "cover_image_url", length = 500)
+    private String coverImageUrl;
+
+    public void updateCoverImage(String coverImageUrl) {
+        this.coverImageUrl = coverImageUrl;
+    }
 }
