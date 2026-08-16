@@ -5,6 +5,7 @@ import com.centerton.bodybuddy.domain.analysis.entity.AnalysisRunType;
 import com.centerton.bodybuddy.domain.analysis.entity.AnalysisStatus;
 import com.centerton.bodybuddy.domain.analysis.entity.RecognitionResult;
 import com.centerton.bodybuddy.domain.analysis.repository.AiAnalysisRunRepository;
+import com.centerton.bodybuddy.domain.analysis.service.MealRecognitionRequestedEvent;
 import com.centerton.bodybuddy.domain.auth.util.AccessKeyGenerator;
 import com.centerton.bodybuddy.domain.auth.util.AuthValidator;
 import com.centerton.bodybuddy.domain.auth.entity.IdempotencyKey;
@@ -16,13 +17,17 @@ import com.centerton.bodybuddy.domain.meal.entity.*;
 import com.centerton.bodybuddy.domain.meal.repository.MealItemRepository;
 import com.centerton.bodybuddy.domain.meal.repository.MealNutritionSummaryRepository;
 import com.centerton.bodybuddy.domain.meal.repository.MealRepository;
+import com.centerton.bodybuddy.domain.meal.storage.MealImageStorage;
+import com.centerton.bodybuddy.domain.meal.storage.ValidatedMealImage;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import com.centerton.bodybuddy.domain.user.repository.UserRepository;
 import com.centerton.bodybuddy.global.exception.BaseException;
 import com.centerton.bodybuddy.global.response.code.ErrorResponseCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -39,6 +44,8 @@ import java.util.function.Function;
 public class MealService {
 
     private static final String TEXT_MEAL_CREATE = "TEXT_MEAL_CREATE";
+    private static final String IMAGE_MEAL_CREATE = "IMAGE_MEAL_CREATE";
+    private static final String RECOGNITION_RETRY = "RECOGNITION_RETRY";
 
     private final UserRepository userRepository;
     private final MealRepository mealRepository;
@@ -47,6 +54,8 @@ public class MealService {
     private final AiAnalysisRunRepository analysisRunRepository;
     private final FoodMatchingService foodMatchingService;
     private final IdempotencyKeyRepository idempotencyKeyRepository;
+    private final MealImageStorage imageStorage;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public MealAcceptedRes createTextMeal(String authorization, String idempotencyKey,
@@ -62,19 +71,19 @@ public class MealService {
                 normalizedText + ":" + request.getEatenAt().toInstant()
         );
 
-        MealAcceptedRes previousResponse = findIdempotentTextMeal(
+        MealAcceptedRes previousResponse = findIdempotentMeal(
                 idempotencyKey,
                 user,
-                fingerprint
+                fingerprint,
+                TEXT_MEAL_CREATE
         );
         if (previousResponse != null) {
             return previousResponse;
         }
 
         Meal meal = mealRepository.save(Meal.createText(user, normalizedText, eatenAtUtc));
-        analysisRunRepository.save(
-                AiAnalysisRun.pending(meal, AnalysisRunType.INITIAL, fingerprint)
-        );
+        AiAnalysisRun analysisRun = analysisRunRepository.save(
+                AiAnalysisRun.pending(meal, AnalysisRunType.INITIAL, fingerprint));
         idempotencyKeyRepository.save(IdempotencyKey.builder()
                 .idempotencyKey(idempotencyKey)
                 .userId(user.getUserId())
@@ -83,20 +92,132 @@ public class MealService {
                 .resourceId(meal.getMealId())
                 .build());
 
-        return MealAcceptedRes.builder()
+        MealAcceptedRes response = MealAcceptedRes.builder()
                 .mealId(meal.getMealId())
-                .status(meal.getStatus())
+                .status(MealStatus.ANALYZING)
                 .build();
+        requestRecognition(meal, analysisRun);
+        return response;
     }
 
-    private MealAcceptedRes findIdempotentTextMeal(String idempotencyKey, User user,
-                                                    String requestFingerprint) {
+    @Transactional
+    public MealAcceptedRes createImageMeal(String authorization, String idempotencyKey,
+                                           MultipartFile image, OffsetDateTime eatenAt) {
+        User user = authenticatedUser(authorization);
+        requireOnboarding(user);
+        ValidatedMealImage validatedImage = imageStorage.validate(image);
+        String fingerprint = AccessKeyGenerator.hash(
+                validatedImage.sha256() + ":" + eatenAt.toInstant()
+        );
+        MealAcceptedRes previousResponse = findIdempotentMeal(
+                idempotencyKey,
+                user,
+                fingerprint,
+                IMAGE_MEAL_CREATE
+        );
+        if (previousResponse != null) {
+            return previousResponse;
+        }
+
+        String objectKey = imageStorage.store(validatedImage);
+        Meal meal = mealRepository.save(Meal.createImage(
+                user,
+                ImageSource.GALLERY,
+                objectKey,
+                eatenAt.withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime()
+        ));
+        AiAnalysisRun analysisRun = analysisRunRepository.save(
+                AiAnalysisRun.pending(meal, AnalysisRunType.INITIAL, fingerprint));
+        saveIdempotencyKey(idempotencyKey, user, IMAGE_MEAL_CREATE, fingerprint, meal.getMealId());
+
+        MealAcceptedRes response = MealAcceptedRes.builder()
+                .mealId(meal.getMealId())
+                .status(MealStatus.ANALYZING)
+                .build();
+        requestRecognition(meal, analysisRun);
+        return response;
+    }
+
+    @Transactional(readOnly = true)
+    public RecognitionCandidatesRes getRecognitionCandidates(String authorization, String mealId) {
+        User user = authenticatedUser(authorization);
+        Meal meal = activeMeal(mealId, user.getUserId());
+        if (meal.getStatus() != MealStatus.REVIEW_REQUIRED) {
+            throw new BaseException(ErrorResponseCode.RECOGNITION_NOT_READY);
+        }
+        AiAnalysisRun latestSucceededRun = analysisRunRepository
+                .findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(
+                        mealId,
+                        AnalysisStatus.SUCCEEDED
+                )
+                .filter(run -> run.getNormalizedResponse() != null)
+                .filter(run -> run.getNormalizedResponse().getFoods() != null)
+                .orElseThrow(() -> new BaseException(ErrorResponseCode.RECOGNITION_NOT_READY));
+        return RecognitionCandidatesRes.from(latestSucceededRun);
+    }
+
+    @Transactional
+    public MealAcceptedRes retryRecognition(String authorization, String idempotencyKey,
+                                            String mealId) {
+        User user = authenticatedUser(authorization);
+        Meal meal = activeMeal(mealId, user.getUserId());
+        if (meal.getStatus() != MealStatus.REVIEW_REQUIRED
+                && meal.getStatus() != MealStatus.FAILED) {
+            throw new BaseException(ErrorResponseCode.RECOGNITION_RETRY_CONFLICT);
+        }
+
+        AiAnalysisRun latestRun = analysisRunRepository
+                .findFirstByMealMealIdOrderByStartedAtDesc(mealId)
+                .orElse(null);
+        int attemptNo = latestRun == null ? 1 : latestRun.getAttemptNo() + 1;
+        String inputFingerprint = AccessKeyGenerator.hash(
+                meal.getInputType() + ":"
+                        + (meal.getInputType() == MealInputType.TEXT
+                        ? meal.getDirectInputText()
+                        : meal.getPhotoObjectKey())
+        );
+        MealAcceptedRes previousResponse = findIdempotentMeal(
+                idempotencyKey,
+                user,
+                inputFingerprint,
+                RECOGNITION_RETRY
+        );
+        if (previousResponse != null) {
+            return previousResponse;
+        }
+
+        meal.markReanalyzing();
+        AiAnalysisRun analysisRun = analysisRunRepository.save(AiAnalysisRun.pending(
+                meal,
+                AnalysisRunType.REANALYSIS,
+                inputFingerprint,
+                attemptNo
+        ));
+        saveIdempotencyKey(idempotencyKey, user, RECOGNITION_RETRY, inputFingerprint, mealId);
+
+        MealAcceptedRes response = MealAcceptedRes.builder()
+                .mealId(mealId)
+                .status(MealStatus.REANALYZING)
+                .build();
+        requestRecognition(meal, analysisRun);
+        return response;
+    }
+
+    private void requestRecognition(Meal meal, AiAnalysisRun analysisRun) {
+        eventPublisher.publishEvent(new MealRecognitionRequestedEvent(
+                meal.getMealId(),
+                analysisRun.getAnalysisRunId()
+        ));
+    }
+
+    private MealAcceptedRes findIdempotentMeal(String idempotencyKey, User user,
+                                               String requestFingerprint, String operation) {
         IdempotencyKey record = idempotencyKeyRepository.findById(idempotencyKey).orElse(null);
         if (record == null) {
             return null;
         }
         boolean sameRequest = user.getUserId().equals(record.getUserId())
-                && TEXT_MEAL_CREATE.equals(record.getOperation())
+                && operation.equals(record.getOperation())
                 && requestFingerprint.equals(record.getRequestFingerprint())
                 && record.getResourceId() != null;
         if (!sameRequest) {
@@ -107,8 +228,19 @@ public class MealService {
                 .orElseThrow(() -> new BaseException(ErrorResponseCode.IDEMPOTENCY_KEY_REUSED));
         return MealAcceptedRes.builder()
                 .mealId(previousMeal.getMealId())
-                .status(MealStatus.ANALYZING)
+                .status(previousMeal.getStatus())
                 .build();
+    }
+
+    private void saveIdempotencyKey(String idempotencyKey, User user, String operation,
+                                    String fingerprint, String mealId) {
+        idempotencyKeyRepository.save(IdempotencyKey.builder()
+                .idempotencyKey(idempotencyKey)
+                .userId(user.getUserId())
+                .operation(operation)
+                .requestFingerprint(fingerprint)
+                .resourceId(mealId)
+                .build());
     }
 
     @Transactional(readOnly = true)
@@ -116,7 +248,7 @@ public class MealService {
         User user = authenticatedUser(authorization);
         Meal meal = activeMeal(mealId, user.getUserId());
         RecognitionResult recognitionResult = analysisRunRepository
-                .findFirstByMealMealIdAndStatusOrderByStartedAtDesc(mealId, AnalysisStatus.SUCCEEDED)
+                .findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(mealId, AnalysisStatus.SUCCEEDED)
                 .map(AiAnalysisRun::getNormalizedResponse)
                 .orElse(null);
 

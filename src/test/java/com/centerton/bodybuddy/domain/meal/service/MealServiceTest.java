@@ -1,8 +1,12 @@
 package com.centerton.bodybuddy.domain.meal.service;
 
 import com.centerton.bodybuddy.domain.analysis.entity.AiAnalysisRun;
+import com.centerton.bodybuddy.domain.analysis.entity.AnalysisRunType;
 import com.centerton.bodybuddy.domain.analysis.entity.AnalysisStatus;
+import com.centerton.bodybuddy.domain.analysis.entity.RecognitionResult;
+import com.centerton.bodybuddy.domain.analysis.entity.RecognizedFood;
 import com.centerton.bodybuddy.domain.analysis.repository.AiAnalysisRunRepository;
+import com.centerton.bodybuddy.domain.analysis.service.MealRecognitionRequestedEvent;
 import com.centerton.bodybuddy.domain.auth.entity.IdempotencyKey;
 import com.centerton.bodybuddy.domain.auth.repository.IdempotencyKeyRepository;
 import com.centerton.bodybuddy.domain.food.entity.Food;
@@ -17,6 +21,8 @@ import com.centerton.bodybuddy.domain.meal.entity.NutritionValues;
 import com.centerton.bodybuddy.domain.meal.repository.MealItemRepository;
 import com.centerton.bodybuddy.domain.meal.repository.MealNutritionSummaryRepository;
 import com.centerton.bodybuddy.domain.meal.repository.MealRepository;
+import com.centerton.bodybuddy.domain.meal.storage.MealImageStorage;
+import com.centerton.bodybuddy.domain.meal.storage.ValidatedMealImage;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import com.centerton.bodybuddy.domain.user.repository.UserRepository;
 import com.centerton.bodybuddy.global.exception.BaseException;
@@ -27,6 +33,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -54,6 +62,8 @@ class MealServiceTest {
     @Mock private AiAnalysisRunRepository analysisRunRepository;
     @Mock private FoodMatchingService foodMatchingService;
     @Mock private IdempotencyKeyRepository idempotencyKeyRepository;
+    @Mock private MealImageStorage imageStorage;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private MealService mealService;
     private User user;
@@ -67,7 +77,9 @@ class MealServiceTest {
                 nutritionSummaryRepository,
                 analysisRunRepository,
                 foodMatchingService,
-                idempotencyKeyRepository
+                idempotencyKeyRepository,
+                imageStorage,
+                eventPublisher
         );
         user = User.builder()
                 .userId("user-id")
@@ -153,7 +165,148 @@ class MealServiceTest {
                 request
         )).isInstanceOfSatisfying(BaseException.class, exception ->
                 assertThat(exception.getBaseResponseCode())
-                        .isEqualTo(ErrorResponseCode.ONBOARDING_NOT_COMPLETED));
+                                .isEqualTo(ErrorResponseCode.ONBOARDING_NOT_COMPLETED));
+    }
+
+    @Test
+    void createsImageMealAndStartsCommonRecognitionFlow() {
+        authenticate(user);
+        MockMultipartFile image = new MockMultipartFile(
+                "image",
+                "meal.png",
+                "image/png",
+                new byte[]{1, 2, 3}
+        );
+        ValidatedMealImage validated = new ValidatedMealImage(
+                new byte[]{1, 2, 3},
+                "image/png",
+                "png",
+                "image-sha256"
+        );
+        when(imageStorage.validate(image)).thenReturn(validated);
+        when(imageStorage.store(validated)).thenReturn("2026/08/meal.png");
+        when(idempotencyKeyRepository.findById("image-key")).thenReturn(Optional.empty());
+        when(mealRepository.save(any(Meal.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(analysisRunRepository.save(any(AiAnalysisRun.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        MealAcceptedRes response = mealService.createImageMeal(
+                "Bearer raw-access-key",
+                "image-key",
+                image,
+                OffsetDateTime.of(2026, 8, 13, 12, 30, 0, 0, ZoneOffset.ofHours(9))
+        );
+
+        ArgumentCaptor<Meal> mealCaptor = ArgumentCaptor.forClass(Meal.class);
+        ArgumentCaptor<AiAnalysisRun> runCaptor = ArgumentCaptor.forClass(AiAnalysisRun.class);
+        verify(mealRepository).save(mealCaptor.capture());
+        verify(analysisRunRepository).save(runCaptor.capture());
+        assertThat(mealCaptor.getValue().getInputType())
+                .isEqualTo(com.centerton.bodybuddy.domain.meal.entity.MealInputType.IMAGE);
+        assertThat(mealCaptor.getValue().getPhotoObjectKey()).isEqualTo("2026/08/meal.png");
+        assertThat(mealCaptor.getValue().getEatenAt())
+                .isEqualTo(LocalDateTime.of(2026, 8, 13, 3, 30));
+        assertThat(response.getStatus()).isEqualTo(MealStatus.ANALYZING);
+        verify(eventPublisher).publishEvent(any(MealRecognitionRequestedEvent.class));
+    }
+
+    @Test
+    void returnsLatestSuccessfulRecognitionCandidatesWithConfidence() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
+        meal.markReviewRequired();
+        AiAnalysisRun run = AiAnalysisRun.pending(
+                meal,
+                AnalysisRunType.REANALYSIS,
+                "fingerprint",
+                2
+        );
+        run.markRunning();
+        run.succeed(
+                RecognitionResult.builder()
+                        .foods(List.of(RecognizedFood.builder()
+                                .foodId("food-id")
+                                .foodName("두부")
+                                .confidence(new BigDecimal("0.9100"))
+                                .build()))
+                        .build(),
+                "FAKE",
+                "fake-v1",
+                "prompt-v1",
+                "response-id",
+                10,
+                null,
+                null
+        );
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+        when(analysisRunRepository.findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(
+                "meal-id",
+                AnalysisStatus.SUCCEEDED
+        )).thenReturn(Optional.of(run));
+
+        RecognitionCandidatesRes response = mealService.getRecognitionCandidates(
+                "Bearer raw-access-key",
+                "meal-id"
+        );
+
+        assertThat(response.getMealId()).isEqualTo(meal.getMealId());
+        assertThat(response.getCandidates()).hasSize(1);
+        assertThat(response.getCandidates().getFirst().getAiFoodName()).isEqualTo("두부");
+        assertThat(response.getCandidates().getFirst().getFoodId()).isEqualTo("food-id");
+        assertThat(response.getCandidates().getFirst().getConfidence())
+                .isEqualByComparingTo("0.9100");
+    }
+
+    @Test
+    void doesNotReturnPreviousCandidatesWhileRetryIsRunning() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
+        meal.markReviewRequired();
+        meal.markReanalyzing();
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+
+        assertThatThrownBy(() -> mealService.getRecognitionCandidates(
+                "Bearer raw-access-key",
+                "meal-id"
+        )).isInstanceOfSatisfying(BaseException.class, exception ->
+                assertThat(exception.getBaseResponseCode())
+                        .isEqualTo(ErrorResponseCode.RECOGNITION_NOT_READY));
+    }
+
+    @Test
+    void createsNewRunAndMarksMealReanalyzingOnRetry() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
+        meal.markReviewRequired();
+        AiAnalysisRun previousRun = AiAnalysisRun.pending(
+                meal,
+                AnalysisRunType.INITIAL,
+                "fingerprint",
+                1
+        );
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+        when(analysisRunRepository.findFirstByMealMealIdOrderByStartedAtDesc("meal-id"))
+                .thenReturn(Optional.of(previousRun));
+        when(idempotencyKeyRepository.findById("retry-key")).thenReturn(Optional.empty());
+        when(analysisRunRepository.save(any(AiAnalysisRun.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        MealAcceptedRes response = mealService.retryRecognition(
+                "Bearer raw-access-key",
+                "retry-key",
+                "meal-id"
+        );
+
+        ArgumentCaptor<AiAnalysisRun> runCaptor = ArgumentCaptor.forClass(AiAnalysisRun.class);
+        verify(analysisRunRepository).save(runCaptor.capture());
+        assertThat(response.getStatus()).isEqualTo(MealStatus.REANALYZING);
+        assertThat(meal.getStatus()).isEqualTo(MealStatus.REANALYZING);
+        assertThat(runCaptor.getValue().getRunType()).isEqualTo(AnalysisRunType.REANALYSIS);
+        assertThat(runCaptor.getValue().getAttemptNo()).isEqualTo(2);
+        verify(eventPublisher).publishEvent(any(MealRecognitionRequestedEvent.class));
     }
 
     @Test
