@@ -461,11 +461,12 @@ components:
         pollAfterMs: {type: integer, minimum: 0}
     RecognitionCandidate:
       type: object
-      required: [candidateId, aiFoodName, candidateOrder, selectionStatus]
+      required: [candidateId, aiFoodName, confidence, candidateOrder, selectionStatus]
       properties:
         candidateId: {type: string, format: uuid}
         aiFoodName: {type: string}
         foodId: {type: [string, 'null'], format: uuid}
+        confidence: {type: number, minimum: 0, maximum: 1}
         candidateOrder: {type: integer, minimum: 0}
         selectionStatus: {type: string, enum: [PENDING, ACCEPTED, REJECTED]}
     RecognitionCandidatesResponse:
