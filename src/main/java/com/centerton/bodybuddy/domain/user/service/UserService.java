@@ -4,9 +4,11 @@ import com.centerton.bodybuddy.domain.auth.util.AuthValidator;
 import com.centerton.bodybuddy.domain.user.dto.*;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import com.centerton.bodybuddy.domain.user.repository.UserRepository;
+import com.centerton.bodybuddy.global.storage.ImageStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 
@@ -15,6 +17,7 @@ import java.time.LocalDateTime;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final ImageStorage imageStorage;
 
     @Transactional
     public OnboardingRes saveOnboarding(String authorization, OnboardingReq req) {
@@ -48,6 +51,10 @@ public class UserService {
                 .nickname(user.getNickname())
                 .birthYear(user.getBirthYear())
                 .gender(user.getGender())
+                .allergyCodes(user.getAllergyCodes())
+                .dislikedFoods(user.getDislikedFoods())
+                .shareToRoom(user.getShareToRoom())
+                .profileImageUrl(user.getProfileImageUrl())
                 .onboardingCompletedAt(user.getOnboardingCompletedAt())
                 .build();
     }
@@ -62,8 +69,7 @@ public class UserService {
                 req.getGender(),
                 req.getAllergyCodes(),
                 req.getDislikedFoods(),
-                req.getShareToRoom(),
-                req.getProfileImageUrl()
+                req.getShareToRoom()
         );
 
         return UserProfileUpdateRes.builder()
@@ -74,6 +80,19 @@ public class UserService {
                 .allergyCodes(user.getAllergyCodes())
                 .dislikedFoods(user.getDislikedFoods())
                 .shareToRoom(user.getShareToRoom())
+                .profileImageUrl(user.getProfileImageUrl())
+                .build();
+    }
+
+    @Transactional
+    public ProfileImageUpdateRes updateProfileImage(String authorization, MultipartFile image) {
+        User user = AuthValidator.validateAndGetUser(authorization, userRepository);
+
+        String profileImageUrl = imageStorage.store(image);
+        user.updateProfileImage(profileImageUrl);
+
+        return ProfileImageUpdateRes.builder()
+                .userId(user.getUserId())
                 .profileImageUrl(user.getProfileImageUrl())
                 .build();
     }
