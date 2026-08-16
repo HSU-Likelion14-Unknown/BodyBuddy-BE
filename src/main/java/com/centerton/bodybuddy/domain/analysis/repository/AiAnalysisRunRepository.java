@@ -9,7 +9,7 @@ import java.util.Optional;
 public interface AiAnalysisRunRepository extends JpaRepository<AiAnalysisRun, String> {
     Optional<AiAnalysisRun> findFirstByMealMealIdOrderByStartedAtDesc(String mealId);
 
-    Optional<AiAnalysisRun> findFirstByMealMealIdAndStatusOrderByStartedAtDesc(
+    Optional<AiAnalysisRun> findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(
             String mealId,
             AnalysisStatus status
     );

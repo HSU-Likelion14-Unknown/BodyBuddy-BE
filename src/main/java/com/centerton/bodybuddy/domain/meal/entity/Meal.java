@@ -90,6 +90,10 @@ public class Meal extends BaseEntity {
         this.status = MealStatus.REVIEW_REQUIRED;
     }
 
+    public void markReanalyzing() {
+        this.status = MealStatus.REANALYZING;
+    }
+
     public void markFailed() {
         this.status = MealStatus.FAILED;
     }

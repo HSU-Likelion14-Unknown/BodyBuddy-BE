@@ -82,17 +82,54 @@ public class AiAnalysisRun {
     private LocalDateTime finishedAt;
 
     public static AiAnalysisRun pending(Meal meal, AnalysisRunType runType, String requestFingerprint) {
+        return pending(meal, runType, requestFingerprint, 1);
+    }
+
+    public static AiAnalysisRun pending(Meal meal, AnalysisRunType runType,
+                                        String requestFingerprint, int attemptNo) {
         return AiAnalysisRun.builder()
                 .analysisRunId(UUID.randomUUID().toString())
                 .meal(meal)
                 .runType(runType)
                 .status(AnalysisStatus.PENDING)
-                .provider("OPENAI")
-                .model("NOT_CONFIGURED")
-                .promptVersion("NOT_CONFIGURED")
+                .provider("PENDING")
+                .model("PENDING")
+                .promptVersion("PENDING")
                 .requestFingerprint(requestFingerprint)
-                .attemptNo(1)
+                .attemptNo(attemptNo)
                 .startedAt(LocalDateTime.now())
                 .build();
+    }
+
+    public void markRunning() {
+        this.status = AnalysisStatus.RUNNING;
+        this.startedAt = LocalDateTime.now();
+    }
+
+    public void succeed(RecognitionResult response, String provider, String model,
+                        String promptVersion, String providerResponseId, int latencyMs,
+                        Integer inputTokens, Integer outputTokens) {
+        this.status = AnalysisStatus.SUCCEEDED;
+        this.normalizedResponse = response;
+        this.provider = provider;
+        this.model = model;
+        this.promptVersion = promptVersion;
+        this.providerResponseId = providerResponseId;
+        this.latencyMs = latencyMs;
+        this.inputTokens = inputTokens;
+        this.outputTokens = outputTokens;
+        this.errorCode = null;
+        this.errorMessage = null;
+        this.finishedAt = LocalDateTime.now();
+    }
+
+    public void fail(String errorCode, String errorMessage, int latencyMs) {
+        this.status = AnalysisStatus.FAILED;
+        this.errorCode = errorCode;
+        this.errorMessage = errorMessage == null
+                ? null
+                : errorMessage.substring(0, Math.min(errorMessage.length(), 500));
+        this.latencyMs = latencyMs;
+        this.finishedAt = LocalDateTime.now();
     }
 }
