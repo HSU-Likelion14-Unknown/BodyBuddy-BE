@@ -51,6 +51,10 @@ public class UserService {
                 .nickname(user.getNickname())
                 .birthYear(user.getBirthYear())
                 .gender(user.getGender())
+                .allergyCodes(user.getAllergyCodes())
+                .dislikedFoods(user.getDislikedFoods())
+                .shareToRoom(user.getShareToRoom())
+                .profileImageUrl(user.getProfileImageUrl())
                 .onboardingCompletedAt(user.getOnboardingCompletedAt())
                 .build();
     }
