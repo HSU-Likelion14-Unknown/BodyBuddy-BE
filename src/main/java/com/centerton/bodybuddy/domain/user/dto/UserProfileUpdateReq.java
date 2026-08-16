@@ -15,5 +15,4 @@ public class UserProfileUpdateReq {
     private List<String> allergyCodes;
     private List<String> dislikedFoods;
     private Boolean shareToRoom;
-    private String profileImageUrl;
 }
