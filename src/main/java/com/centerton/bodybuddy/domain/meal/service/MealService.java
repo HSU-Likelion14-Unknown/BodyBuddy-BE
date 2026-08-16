@@ -19,6 +19,7 @@ import com.centerton.bodybuddy.domain.meal.repository.MealNutritionSummaryReposi
 import com.centerton.bodybuddy.domain.meal.repository.MealRepository;
 import com.centerton.bodybuddy.domain.meal.storage.MealImageStorage;
 import com.centerton.bodybuddy.domain.meal.storage.ValidatedMealImage;
+import com.centerton.bodybuddy.domain.recommendation.service.RecommendationQueryService;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import com.centerton.bodybuddy.domain.user.repository.UserRepository;
 import com.centerton.bodybuddy.global.exception.BaseException;
@@ -56,6 +57,7 @@ public class MealService {
     private final IdempotencyKeyRepository idempotencyKeyRepository;
     private final MealImageStorage imageStorage;
     private final ApplicationEventPublisher eventPublisher;
+    private final RecommendationQueryService recommendationQueryService;
 
     @Transactional
     public MealAcceptedRes createTextMeal(String authorization, String idempotencyKey,
@@ -266,7 +268,7 @@ public class MealService {
                 .nutritionSummary(nutritionSummaryRepository.findById(mealId)
                         .map(NutritionSummaryRes::from)
                         .orElse(null))
-                .recommendation(null)
+                .recommendation(recommendationQueryService.findByMealId(mealId))
                 .build();
     }
 
