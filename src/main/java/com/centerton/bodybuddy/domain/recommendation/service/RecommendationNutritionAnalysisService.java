@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
 @Service
@@ -24,10 +25,29 @@ public class RecommendationNutritionAnalysisService {
 
     @Transactional(readOnly = true)
     public RecommendationNutritionAnalysis analyze(User user, LocalDate date, int limit) {
-        KdrReferenceValues reference = referenceProvider.referenceFor(user, date);
-        NutritionValues dailyNutrition = dailyNutritionService.sumForDate(user.getUserId(), date);
-        NutritionGapResult gap = gapCalculator.calculate(reference, dailyNutrition);
+        NutritionGapResult gap = calculateGap(user, date);
         List<RankedIngredient> ingredients = ingredientRankingService.rank(user, gap, limit);
         return new RecommendationNutritionAnalysis(gap, ingredients);
+    }
+
+    @Transactional(readOnly = true)
+    public RecommendationNutritionAnalysis analyzeMappable(
+            User user,
+            LocalDate date,
+            Collection<String> mappableFoodIds
+    ) {
+        NutritionGapResult gap = calculateGap(user, date);
+        List<RankedIngredient> ingredients = ingredientRankingService.rankMappable(
+                user,
+                gap,
+                mappableFoodIds
+        );
+        return new RecommendationNutritionAnalysis(gap, ingredients);
+    }
+
+    private NutritionGapResult calculateGap(User user, LocalDate date) {
+        KdrReferenceValues reference = referenceProvider.referenceFor(user, date);
+        NutritionValues dailyNutrition = dailyNutritionService.sumForDate(user.getUserId(), date);
+        return gapCalculator.calculate(reference, dailyNutrition);
     }
 }

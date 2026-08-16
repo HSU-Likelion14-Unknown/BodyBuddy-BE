@@ -148,6 +148,73 @@ class IngredientDishMappingServiceTest {
         assertThat(result).hasSize(3);
     }
 
+    @Test
+    void deduplicatesRankedIngredientsByFoodId() {
+        Food spinach = ingredient("spinach", "시금치");
+        List<RankedIngredient> duplicated = List.of(
+                ranked(spinach, 1),
+                ranked(spinach, 2)
+        );
+        when(mappingRepository.findActiveMappings(List.of("spinach"))).thenReturn(List.of(
+                mapping(spinach, dish("side", "시금치나물",
+                        List.of("시금치"), List.of()), 1),
+                mapping(spinach, dish("soup", "시금치국",
+                        List.of("시금치"), List.of()), 2)
+        ));
+
+        List<IngredientDishRecommendation> result = mappingService.map(
+                user(List.of(), List.of()),
+                duplicated,
+                3
+        );
+
+        assertThat(result).hasSize(1);
+        verify(mappingRepository).findActiveMappings(List.of("spinach"));
+    }
+
+    @Test
+    void stopsLoadingMappingBatchesAfterReachingIngredientLimit() {
+        List<Food> ingredients = IntStream.rangeClosed(1, 21)
+                .mapToObj(number -> ingredient("food-" + number, "원재료" + number))
+                .toList();
+        List<RankedIngredient> ranked = IntStream.range(0, ingredients.size())
+                .mapToObj(index -> ranked(ingredients.get(index), index + 1))
+                .toList();
+        List<String> firstBatchIds = ingredients.subList(0, 20).stream()
+                .map(Food::getFoodId)
+                .toList();
+        List<String> secondBatchIds = List.of(ingredients.get(20).getFoodId());
+        List<IngredientDishMapping> firstBatchMappings = ingredients.subList(0, 3)
+                .stream()
+                .flatMap(ingredient -> List.of(
+                        mapping(ingredient, dish(
+                                ingredient.getFoodId() + "-dish-1",
+                                ingredient.getIngredientName() + "요리1",
+                                List.of(ingredient.getIngredientName()),
+                                List.of()
+                        ), 1),
+                        mapping(ingredient, dish(
+                                ingredient.getFoodId() + "-dish-2",
+                                ingredient.getIngredientName() + "요리2",
+                                List.of(ingredient.getIngredientName()),
+                                List.of()
+                        ), 2)
+                ).stream())
+                .toList();
+        when(mappingRepository.findActiveMappings(firstBatchIds))
+                .thenReturn(firstBatchMappings);
+
+        List<IngredientDishRecommendation> result = mappingService.map(
+                user(List.of(), List.of()),
+                ranked,
+                3
+        );
+
+        assertThat(result).hasSize(3);
+        verify(mappingRepository).findActiveMappings(firstBatchIds);
+        verify(mappingRepository, never()).findActiveMappings(secondBatchIds);
+    }
+
     private User user(List<String> allergies, List<String> dislikes) {
         return User.builder()
                 .userId("user-id")

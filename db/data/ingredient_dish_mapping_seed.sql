@@ -97,11 +97,18 @@ FROM (
     UNION ALL SELECT '20000000-0000-5000-8000-000000000038', '귤', '10000000-0000-5000-8000-000000000038', 2
     UNION ALL SELECT '20000000-0000-5000-8000-000000000039', '귤', '10000000-0000-5000-8000-000000000039', 3
 ) seed
-JOIN foods food
+JOIN (
+    -- ingredient_name is not unique, so choose one representative deterministically.
+    SELECT ingredient_name, MIN(food_id) AS food_id
+    FROM foods
+    WHERE is_recommendation_candidate = TRUE
+      AND active = TRUE
+      AND food_type = 'INGREDIENT'
+    GROUP BY ingredient_name
+) food
   ON food.ingredient_name = seed.ingredient_name
- AND food.is_recommendation_candidate = TRUE
- AND food.active = TRUE
 ON DUPLICATE KEY UPDATE
+    ingredient_food_id = VALUES(ingredient_food_id),
     dish_id = VALUES(dish_id),
     priority = VALUES(priority),
     active = TRUE,

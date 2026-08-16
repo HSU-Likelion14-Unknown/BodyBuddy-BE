@@ -14,15 +14,31 @@ public interface IngredientDishMappingRepository
     @Query("""
             select mapping
             from IngredientDishMapping mapping
-            join fetch mapping.ingredientFood ingredient
-            join fetch mapping.dish dish
-            left join fetch dish.food
-            where ingredient.foodId in :ingredientFoodIds
+            join fetch mapping.ingredientFood
+            join fetch mapping.dish
+            left join fetch mapping.dish.food
+            where mapping.ingredientFood.foodId in :ingredientFoodIds
               and mapping.active = true
-              and dish.active = true
-            order by mapping.priority asc, dish.normalizedName asc, dish.dishId asc
+              and mapping.dish.active = true
+            order by mapping.priority asc,
+                     mapping.dish.normalizedName asc,
+                     mapping.dish.dishId asc
             """)
     List<IngredientDishMapping> findActiveMappings(
             @Param("ingredientFoodIds") Collection<String> ingredientFoodIds
     );
+
+    @Query("""
+            select mapping.ingredientFood.foodId
+            from IngredientDishMapping mapping
+            where mapping.active = true
+              and mapping.dish.active = true
+              and mapping.ingredientFood.active = true
+              and mapping.ingredientFood.recommendationCandidate = true
+              and mapping.ingredientFood.foodType = 'INGREDIENT'
+            group by mapping.ingredientFood.foodId
+            having count(distinct mapping.dish.dishId) >= 2
+            order by mapping.ingredientFood.foodId asc
+            """)
+    List<String> findMappableIngredientFoodIds();
 }

@@ -34,7 +34,7 @@ class RecommendationPlanningServiceTest {
     private RecommendationPlanningService planningService;
 
     @Test
-    void loadsLargerCandidatePoolAndLimitsMappedIngredientsToThree() {
+    void ranksOnlyMappableFoodsAndLimitsMappedIngredientsToThree() {
         User user = User.builder().userId("user-id").build();
         LocalDate date = LocalDate.of(2026, 8, 16);
         NutritionGapResult gap = gap();
@@ -42,13 +42,18 @@ class RecommendationPlanningServiceTest {
                 gap,
                 List.of()
         );
-        when(nutritionAnalysisService.analyze(user, date, 1000)).thenReturn(analysis);
+        List<String> mappableFoodIds = List.of("spinach", "broccoli");
+        when(dishMappingService.findMappableIngredientFoodIds())
+                .thenReturn(mappableFoodIds);
+        when(nutritionAnalysisService.analyzeMappable(user, date, mappableFoodIds))
+                .thenReturn(analysis);
         when(dishMappingService.map(user, List.of(), 3)).thenReturn(List.of());
 
         RecommendationPlan result = planningService.plan(user, date, 10);
 
         assertThat(result.nutritionGap()).isSameAs(gap);
         assertThat(result.ingredients()).isEmpty();
+        verify(nutritionAnalysisService).analyzeMappable(user, date, mappableFoodIds);
         verify(dishMappingService).map(user, List.of(), 3);
     }
 

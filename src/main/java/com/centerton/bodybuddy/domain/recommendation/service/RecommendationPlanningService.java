@@ -16,7 +16,6 @@ import java.util.List;
 public class RecommendationPlanningService {
 
     private static final int MAX_RECOMMENDED_INGREDIENTS = 3;
-    private static final int MAX_MAPPING_CANDIDATE_POOL = 1000;
 
     private final RecommendationNutritionAnalysisService nutritionAnalysisService;
     private final IngredientDishMappingService dishMappingService;
@@ -24,10 +23,13 @@ public class RecommendationPlanningService {
     @Transactional(readOnly = true)
     public RecommendationPlan plan(User user, LocalDate date, int ingredientLimit) {
         int safeLimit = Math.max(0, Math.min(ingredientLimit, MAX_RECOMMENDED_INGREDIENTS));
-        RecommendationNutritionAnalysis analysis = nutritionAnalysisService.analyze(
+        List<String> mappableFoodIds = safeLimit == 0
+                ? List.of()
+                : dishMappingService.findMappableIngredientFoodIds();
+        RecommendationNutritionAnalysis analysis = nutritionAnalysisService.analyzeMappable(
                 user,
                 date,
-                safeLimit == 0 ? 0 : MAX_MAPPING_CANDIDATE_POOL
+                mappableFoodIds
         );
         List<IngredientDishRecommendation> ingredients = dishMappingService.map(
                 user,

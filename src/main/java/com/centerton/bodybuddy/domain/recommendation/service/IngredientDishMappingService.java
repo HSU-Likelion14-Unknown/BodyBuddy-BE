@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,6 +27,7 @@ public class IngredientDishMappingService {
     private static final int MIN_DISHES_PER_INGREDIENT = 2;
     private static final int MAX_DISHES_PER_INGREDIENT = 3;
     private static final int MAX_RECOMMENDED_INGREDIENTS = 3;
+    private static final int MAPPING_QUERY_BATCH_SIZE = 20;
 
     private final IngredientDishMappingRepository mappingRepository;
     private final DishSafetyPolicy dishSafetyPolicy;
@@ -42,42 +44,63 @@ public class IngredientDishMappingService {
                 ingredientLimit,
                 MAX_RECOMMENDED_INGREDIENTS
         );
-        List<RankedIngredient> candidates = rankedIngredients.stream()
+        Map<String, RankedIngredient> uniqueCandidates = new LinkedHashMap<>();
+        rankedIngredients.stream()
                 .filter(java.util.Objects::nonNull)
-                .toList();
-
-        List<String> foodIds = candidates.stream()
-                .map(RankedIngredient::foodId)
-                .filter(java.util.Objects::nonNull)
-                .distinct()
-                .toList();
-        if (foodIds.isEmpty()) {
+                .filter(ingredient -> ingredient.foodId() != null)
+                .forEach(ingredient -> uniqueCandidates.putIfAbsent(
+                        ingredient.foodId(),
+                        ingredient
+                ));
+        List<RankedIngredient> candidates = List.copyOf(uniqueCandidates.values());
+        if (candidates.isEmpty()) {
             return List.of();
         }
 
-        Map<String, List<IngredientDishMapping>> mappingsByIngredient = new HashMap<>();
+        List<IngredientDishRecommendation> result = new ArrayList<>();
+        for (int start = 0; start < candidates.size(); start += MAPPING_QUERY_BATCH_SIZE) {
+            int end = Math.min(start + MAPPING_QUERY_BATCH_SIZE, candidates.size());
+            List<RankedIngredient> batch = candidates.subList(start, end);
+            Map<String, List<IngredientDishMapping>> mappingsByIngredient = groupMappings(
+                    batch
+            );
+
+            for (RankedIngredient ingredient : batch) {
+                List<RecommendedDish> dishes = safeDishes(
+                        user,
+                        mappingsByIngredient.getOrDefault(ingredient.foodId(), List.of())
+                );
+                if (dishes.size() < MIN_DISHES_PER_INGREDIENT) {
+                    continue;
+                }
+                result.add(new IngredientDishRecommendation(ingredient, dishes));
+                if (result.size() == safeIngredientLimit) {
+                    return List.copyOf(result);
+                }
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> findMappableIngredientFoodIds() {
+        return List.copyOf(mappingRepository.findMappableIngredientFoodIds());
+    }
+
+    private Map<String, List<IngredientDishMapping>> groupMappings(
+            List<RankedIngredient> batch
+    ) {
+        List<String> foodIds = batch.stream()
+                .map(RankedIngredient::foodId)
+                .toList();
+        Map<String, List<IngredientDishMapping>> result = new HashMap<>();
         mappingRepository.findActiveMappings(foodIds).forEach(mapping ->
-                mappingsByIngredient.computeIfAbsent(
+                result.computeIfAbsent(
                         mapping.getIngredientFood().getFoodId(),
                         ignored -> new ArrayList<>()
                 ).add(mapping)
         );
-
-        List<IngredientDishRecommendation> result = new ArrayList<>();
-        for (RankedIngredient ingredient : candidates) {
-            List<RecommendedDish> dishes = safeDishes(
-                    user,
-                    mappingsByIngredient.getOrDefault(ingredient.foodId(), List.of())
-            );
-            if (dishes.size() < MIN_DISHES_PER_INGREDIENT) {
-                continue;
-            }
-            result.add(new IngredientDishRecommendation(ingredient, dishes));
-            if (result.size() == safeIngredientLimit) {
-                break;
-            }
-        }
-        return List.copyOf(result);
+        return result;
     }
 
     private List<RecommendedDish> safeDishes(User user,
