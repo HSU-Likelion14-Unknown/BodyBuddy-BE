@@ -69,13 +69,16 @@ public class User extends BaseEntity {
 
     public void updateProfile(String nickname, Integer birthYear, Gender gender,
                               List<String> allergyCodes, List<String> dislikedFoods,
-                              Boolean shareToRoom, String profileImageUrl) {
+                              Boolean shareToRoom) {
         if (nickname != null) this.nickname = nickname;
         if (birthYear != null) this.birthYear = birthYear;
         if (gender != null) this.gender = gender;
         if (allergyCodes != null) this.allergyCodes = List.copyOf(allergyCodes);
         if (dislikedFoods != null) this.dislikedFoods = List.copyOf(dislikedFoods);
         if (shareToRoom != null) this.shareToRoom = shareToRoom;
-        if (profileImageUrl != null) this.profileImageUrl = profileImageUrl;
+    }
+
+    public void updateProfileImage(String profileImageUrl) {
+        this.profileImageUrl = profileImageUrl;
     }
 }
