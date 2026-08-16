@@ -28,6 +28,7 @@ public enum ErrorResponseCode implements BaseResponseCode {
     INVALID_MEDIA_TYPE("UNSUPPORTED_MEDIA_TYPE", UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 미디어 타입입니다."),
     INVALID_INPUT_VALUE("VALIDATION_ERROR", VALIDATION_ERROR, "요청값을 확인해 주세요."),
     MEAL_ITEMS_INVALID("MEAL_ITEMS_INVALID", VALIDATION_ERROR, "음식 또는 섭취량을 확인해 주세요."),
+    KDRI_PROFILE_REQUIRED("KDRI_PROFILE_REQUIRED", VALIDATION_ERROR, "영양 기준 계산을 위한 출생연도와 성별 정보가 필요합니다."),
     TOO_MANY_REQUESTS("RATE_LIMITED", RATE_LIMITED, "요청 빈도 제한을 초과했습니다."),
     SERVER_ERROR("INTERNAL_SERVER_ERROR", INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),
     AI_BAD_RESPONSE("AI_RESPONSE_INVALID", AI_RESPONSE_INVALID, "AI 응답 형식이 올바르지 않습니다."),
