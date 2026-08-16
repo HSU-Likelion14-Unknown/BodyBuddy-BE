@@ -5,6 +5,7 @@ import com.centerton.bodybuddy.domain.food.entity.FoodNutrition;
 import com.centerton.bodybuddy.domain.food.repository.FoodNutritionRepository;
 import com.centerton.bodybuddy.domain.meal.entity.NutritionValues;
 import com.centerton.bodybuddy.domain.recommendation.model.KdrReferenceValues;
+import com.centerton.bodybuddy.domain.recommendation.model.NutrientGap;
 import com.centerton.bodybuddy.domain.recommendation.model.NutritionGapResult;
 import com.centerton.bodybuddy.domain.recommendation.model.RankedIngredient;
 import com.centerton.bodybuddy.domain.recommendation.model.TargetNutrient;
@@ -18,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
@@ -112,6 +114,31 @@ class IngredientRankingServiceTest {
 
         assertThat(result).isEmpty();
         verify(foodNutritionRepository, never()).findRecommendationCandidates();
+    }
+
+    @Test
+    void skipsNutrientsMissingFromPartialGapMap() {
+        NutrientGap iron = new NutrientGap(
+                new BigDecimal("8"),
+                BigDecimal.ZERO,
+                new BigDecimal("8"),
+                BigDecimal.ONE
+        );
+        NutritionGapResult partialGap = new NutritionGapResult(
+                reference(),
+                NutritionValues.builder().build(),
+                Map.of(TargetNutrient.IRON, iron),
+                TargetNutrient.IRON
+        );
+        User user = user(List.of(), List.of());
+        when(foodNutritionRepository.findRecommendationCandidates()).thenReturn(List.of(
+                nutrition("spinach", "시금치", "4", "100")
+        ));
+
+        List<RankedIngredient> result = rankingService.rank(user, partialGap, 1);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().ingredientName()).isEqualTo("시금치");
     }
 
     private NutritionGapResult ironGap() {

@@ -28,10 +28,19 @@ class IngredientSafetyPolicyTest {
         assertThat(policy.canEvaluate(List.of("UNKNOWN_ALLERGEN"))).isFalse();
     }
 
+    @Test
+    void doesNotMatchAllergenAcrossIngredientAndCanonicalNameBoundary() {
+        assertThat(policy.isAllowed(food("계", "란"), List.of("EGG"), List.of())).isTrue();
+    }
+
     private Food food(String ingredientName) {
+        return food(ingredientName, ingredientName);
+    }
+
+    private Food food(String ingredientName, String canonicalName) {
         return Food.builder()
                 .foodId(ingredientName + "-id")
-                .canonicalName(ingredientName)
+                .canonicalName(canonicalName)
                 .normalizedName(ingredientName)
                 .ingredientName(ingredientName)
                 .active(true)

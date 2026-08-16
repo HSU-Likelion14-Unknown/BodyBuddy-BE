@@ -38,6 +38,7 @@ public class IngredientSafetyPolicy {
         }
 
         String searchableName = ingredient
+                + "|"
                 + FoodNameNormalizer.normalizeLookupName(food.getCanonicalName());
         return safeList(allergyCodes).stream()
                 .map(this::normalizeCode)

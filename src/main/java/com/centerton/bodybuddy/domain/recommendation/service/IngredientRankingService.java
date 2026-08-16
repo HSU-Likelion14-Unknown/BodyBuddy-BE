@@ -114,7 +114,10 @@ public class IngredientRankingService {
         for (TargetNutrient nutrient : TargetNutrient.values()) {
             NutrientGap gap = gapResult.gapOf(nutrient);
             BigDecimal amount = nutrient.amountFrom(per100g);
-            if (gap.gapAmount().signum() == 0 || amount == null || amount.signum() <= 0) {
+            if (gap == null
+                    || gap.gapAmount().signum() == 0
+                    || amount == null
+                    || amount.signum() <= 0) {
                 continue;
             }
             BigDecimal coverage = amount.divide(
