@@ -19,6 +19,26 @@ DB_PASSWORD=<database-password>
 
 `prod` 프로필은 `ddl-auto=validate`, `show-sql=false`로 실행되므로 애플리케이션이 운영 DB 구조를 임의로 변경하지 않습니다.
 
+### OpenAI 음식 인식
+
+기본값은 외부 API를 호출하지 않는 `fake` provider입니다. 실제 음식 인식을 사용하려면 다음 환경변수를 설정합니다.
+
+```text
+FOOD_RECOGNITION_PROVIDER=openai
+OPENAI_API_KEY=<OpenAI API key>
+```
+
+필요하면 모델과 요청 설정을 변경할 수 있습니다.
+
+```text
+OPENAI_FOOD_RECOGNITION_MODEL=gpt-5-mini-2025-08-07
+OPENAI_IMAGE_DETAIL=auto
+OPENAI_CONNECT_TIMEOUT=5s
+OPENAI_READ_TIMEOUT=45s
+```
+
+API 키는 저장소 파일에 작성하거나 커밋하지 않습니다.
+
 ## 🌿 브랜치 네이밍 규칙
 
 브랜치 명: `(태그/#이슈번호)`
