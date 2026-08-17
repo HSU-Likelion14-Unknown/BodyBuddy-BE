@@ -19,6 +19,7 @@ public class DailyMealsRes {
         private String mealId;
         private String directInputText;
         private String photoUrl;
+        private List<String> foodNames;
         private LocalDateTime eatenAt;
         private BigDecimal calories;
         private BigDecimal carbohydrate;
