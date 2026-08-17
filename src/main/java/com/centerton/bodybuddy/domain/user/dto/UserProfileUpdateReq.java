@@ -1,6 +1,6 @@
 package com.centerton.bodybuddy.domain.user.dto;
 
-import jakarta.validation.constraints.NotEmpty;
+import com.centerton.bodybuddy.domain.user.entity.Gender;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -8,11 +8,11 @@ import java.util.List;
 
 @Getter
 @NoArgsConstructor
-public class PreferenceReq {
-
-    @NotEmpty(message = "알레르기 정보를 입력해주세요.")
+public class UserProfileUpdateReq {
+    private String nickname;
+    private Integer birthYear;
+    private Gender gender;
     private List<String> allergyCodes;
-
-    @NotEmpty(message = "비선호 음식 정보를 입력해주세요.")
     private List<String> dislikedFoods;
+    private Boolean shareToRoom;
 }

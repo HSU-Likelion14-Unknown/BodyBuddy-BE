@@ -1,0 +1,24 @@
+{
+  "source_file": "식품성분표(10개정판).xlsx",
+  "source_sha256": "271cc431f2991b3c0c049ec6e05fb59a040319e984ab71468184530de61dec50",
+  "source_sheet": "국가표준식품성분 Database 10.4",
+  "source_version": "10.4",
+  "row_count": 3366,
+  "unique_food_ids": 3366,
+  "unique_source_codes": 3366,
+  "recommendation_candidate_count": 672,
+  "candidate_base_name_count": 672,
+  "catalog_sha256": "37572d51abef7d3d782ea9e187abf22c6195645fe41225c6c00440729f222df5",
+  "nutrition_quality_counts": {
+    "MEASURED": 2222,
+    "QUALIFIED": 146,
+    "PARTIAL": 998
+  },
+  "representative_method_counts": {
+    "EXACT_BASE_NAME": 78,
+    "GENERIC_RAW": 351,
+    "GENERIC_RAW_VARIANT": 9,
+    "LOWEST_COMPLEXITY_VARIANT": 101,
+    "NUTRITION_MEDOID_RAW": 133
+  }
+}
