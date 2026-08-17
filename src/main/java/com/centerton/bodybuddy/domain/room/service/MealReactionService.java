@@ -3,6 +3,7 @@ package com.centerton.bodybuddy.domain.room.service;
 import com.centerton.bodybuddy.domain.auth.util.AuthValidator;
 import com.centerton.bodybuddy.domain.meal.entity.Meal;
 import com.centerton.bodybuddy.domain.meal.repository.MealRepository;
+import com.centerton.bodybuddy.domain.room.dto.MealReactionsRes;
 import com.centerton.bodybuddy.domain.room.dto.MealReactionsUpdateReq;
 import com.centerton.bodybuddy.domain.room.dto.MealReactionsUpdateRes;
 import com.centerton.bodybuddy.domain.room.entity.MealReaction;
@@ -65,12 +66,48 @@ public class MealReactionService {
         );
 
         List<MealReactionsUpdateRes.ReactionCount> counts =
-                getReactionCounts(mealId);
+                getUpdateReactionCounts(mealId);
 
         return MealReactionsUpdateRes.builder()
                 .roomId(roomId)
                 .mealId(mealId)
                 .myReactions(requestedEmojis)
+                .reactions(counts)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public MealReactionsRes getReactions(
+            String authorization,
+            String roomId,
+            String mealId
+    ) {
+        User requester = AuthValidator.validateAndGetUser(
+                authorization,
+                userRepository
+        );
+
+        validateRoomMember(roomId, requester.getUserId());
+
+        Meal meal = mealRepository.findByIdWithUser(mealId)
+                .orElseThrow(() ->
+                        new BaseException(
+                                RoomErrorCode.ROOM_MEAL_NOT_FOUND
+                        )
+                );
+
+        validateSharedRoomMeal(roomId, meal);
+
+        List<ReactionEmoji> myReactions =
+                getMyReactions(mealId, requester.getUserId());
+
+        List<MealReactionsRes.ReactionCount> counts =
+                getReactionCounts(mealId);
+
+        return MealReactionsRes.builder()
+                .roomId(roomId)
+                .mealId(mealId)
+                .myReactions(myReactions)
                 .reactions(counts)
                 .build();
     }
@@ -157,13 +194,41 @@ public class MealReactionService {
         mealReactionRepository.saveAllAndFlush(reactions);
     }
 
+    private List<ReactionEmoji> getMyReactions(
+            String mealId,
+            String userId
+    ) {
+        return mealReactionRepository
+                .findAllByMealMealIdAndUserUserIdOrderByEmojiTypeAsc(
+                        mealId,
+                        userId
+                )
+                .stream()
+                .map(MealReaction::getEmojiType)
+                .toList();
+    }
+
     private List<MealReactionsUpdateRes.ReactionCount>
-    getReactionCounts(String mealId) {
+    getUpdateReactionCounts(String mealId) {
         return mealReactionRepository
                 .countByMealIdGroupByEmojiType(mealId)
                 .stream()
                 .map(row ->
                         MealReactionsUpdateRes.ReactionCount.builder()
+                                .emojiType((ReactionEmoji) row[0])
+                                .count((Long) row[1])
+                                .build()
+                )
+                .toList();
+    }
+
+    private List<MealReactionsRes.ReactionCount>
+    getReactionCounts(String mealId) {
+        return mealReactionRepository
+                .countByMealIdGroupByEmojiType(mealId)
+                .stream()
+                .map(row ->
+                        MealReactionsRes.ReactionCount.builder()
                                 .emojiType((ReactionEmoji) row[0])
                                 .count((Long) row[1])
                                 .build()

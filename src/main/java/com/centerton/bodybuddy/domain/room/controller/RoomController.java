@@ -108,4 +108,15 @@ public class RoomController {
         return ResponseEntity.status(HttpStatus.OK)
                 .body(SuccessResponse.from(response));
     }
+
+    @GetMapping("/{roomId}/meals/{mealId}/reactions")
+    public ResponseEntity<SuccessResponse<MealReactionsRes>>
+    getMealReactions(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId,
+            @PathVariable String mealId
+    ) {
+        MealReactionsRes response = mealReactionService.getReactions(authorization, roomId, mealId);
+        return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
+    }
 }

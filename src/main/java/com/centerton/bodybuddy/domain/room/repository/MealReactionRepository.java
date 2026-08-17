@@ -10,10 +10,7 @@ import java.util.List;
 
 public interface MealReactionRepository extends JpaRepository<MealReaction, String> {
 
-    @Modifying(
-            clearAutomatically = true,
-            flushAutomatically = true
-    )
+    @Modifying(flushAutomatically = true)
     @Query("""
             delete from MealReaction reaction
             where reaction.meal.mealId = :mealId
