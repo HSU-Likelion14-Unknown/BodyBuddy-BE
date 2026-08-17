@@ -261,11 +261,21 @@ public class MealService {
                 .findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(mealId, AnalysisStatus.SUCCEEDED)
                 .map(AiAnalysisRun::getNormalizedResponse)
                 .orElse(null);
+        AiAnalysisRun latestFailedRun = meal.getStatus() == MealStatus.FAILED
+                ? analysisRunRepository.findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(
+                        mealId,
+                        AnalysisStatus.FAILED
+                )
+                .orElse(null)
+                : null;
 
         return MealDetailRes.builder()
                 .mealId(meal.getMealId())
                 .status(meal.getStatus())
                 .eatenAt(toUtc(meal.getEatenAt()))
+                .recognitionFailure(latestFailedRun == null
+                        ? null
+                        : RecognitionFailureRes.from(latestFailedRun))
                 .recognizedItems(recognitionResult == null || recognitionResult.getFoods() == null
                         ? null
                         : recognitionResult.getFoods().stream().map(RecognizedItemRes::from).toList())

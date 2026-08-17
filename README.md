@@ -26,7 +26,12 @@ DB_PASSWORD=<database-password>
 ```text
 FOOD_RECOGNITION_PROVIDER=openai
 OPENAI_API_KEY=<OpenAI API key>
+FOOD_RECOGNITION_MIN_CONFIDENCE=0.60
 ```
+
+`FOOD_RECOGNITION_MIN_CONFIDENCE`는 음식 후보 중 하나라도 검토 화면으로 보낼 최소
+신뢰도입니다. 모든 후보가 이 값보다 낮거나 음식이 아닌 입력으로 판정되면 식사 상태가
+`FAILED`가 됩니다. 값은 `0.0` 이상 `1.0` 이하로 설정합니다.
 
 필요하면 모델과 요청 설정을 변경할 수 있습니다.
 

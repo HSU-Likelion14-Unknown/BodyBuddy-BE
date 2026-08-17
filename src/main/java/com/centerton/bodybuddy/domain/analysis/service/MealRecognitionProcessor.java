@@ -4,8 +4,11 @@ import com.centerton.bodybuddy.domain.analysis.client.FoodRecognitionCandidate;
 import com.centerton.bodybuddy.domain.analysis.client.FoodRecognitionClient;
 import com.centerton.bodybuddy.domain.analysis.client.FoodRecognitionInput;
 import com.centerton.bodybuddy.domain.analysis.client.FoodRecognitionResponse;
+import com.centerton.bodybuddy.domain.analysis.client.FoodRecognitionResultType;
+import com.centerton.bodybuddy.domain.analysis.config.FoodRecognitionProperties;
 import com.centerton.bodybuddy.domain.analysis.entity.AiAnalysisRun;
 import com.centerton.bodybuddy.domain.analysis.entity.RecognitionResult;
+import com.centerton.bodybuddy.domain.analysis.entity.RecognitionFailureReason;
 import com.centerton.bodybuddy.domain.analysis.entity.RecognizedFood;
 import com.centerton.bodybuddy.domain.analysis.repository.AiAnalysisRunRepository;
 import com.centerton.bodybuddy.domain.food.service.FoodMatchingService;
@@ -21,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+
 @Service
 @RequiredArgsConstructor
 public class MealRecognitionProcessor {
@@ -30,6 +34,7 @@ public class MealRecognitionProcessor {
     private final MealImageStorage imageStorage;
     private final MealRepository mealRepository;
     private final AiAnalysisRunRepository analysisRunRepository;
+    private final FoodRecognitionProperties recognitionProperties;
 
     @Transactional
     public void process(String mealId, String analysisRunId) {
@@ -46,6 +51,30 @@ public class MealRecognitionProcessor {
             RecognitionResult normalized = RecognitionResult.builder()
                     .foods(response.candidates().stream().map(this::match).toList())
                     .build();
+            if (response.resultType() == FoodRecognitionResultType.NO_FOOD) {
+                failRecognized(
+                        run,
+                        response,
+                        normalized,
+                        RecognitionFailureReason.NO_FOOD,
+                        startedNanos
+                );
+                meal.markFailed();
+                return;
+            }
+            if (highestConfidence(response).compareTo(
+                    recognitionProperties.getMinimumConfidence()
+            ) < 0) {
+                failRecognized(
+                        run,
+                        response,
+                        normalized,
+                        RecognitionFailureReason.LOW_CONFIDENCE,
+                        startedNanos
+                );
+                meal.markFailed();
+                return;
+            }
             run.succeed(
                     normalized,
                     response.provider(),
@@ -90,8 +119,12 @@ public class MealRecognitionProcessor {
 
     private void validate(FoodRecognitionResponse response) {
         if (response == null
+                || response.resultType() == null
                 || response.candidates() == null
-                || response.candidates().isEmpty()
+                || (response.resultType() == FoodRecognitionResultType.FOOD
+                && response.candidates().isEmpty())
+                || (response.resultType() == FoodRecognitionResultType.NO_FOOD
+                && !response.candidates().isEmpty())
                 || isBlank(response.provider())
                 || isBlank(response.model())
                 || isBlank(response.promptVersion())
@@ -106,6 +139,31 @@ public class MealRecognitionProcessor {
         }
         return candidate.confidence().compareTo(BigDecimal.ZERO) < 0
                 || candidate.confidence().compareTo(BigDecimal.ONE) > 0;
+    }
+
+    private BigDecimal highestConfidence(FoodRecognitionResponse response) {
+        return response.candidates().stream()
+                .map(FoodRecognitionCandidate::confidence)
+                .max(BigDecimal::compareTo)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    private void failRecognized(AiAnalysisRun run, FoodRecognitionResponse response,
+                                RecognitionResult normalized,
+                                RecognitionFailureReason reason,
+                                long startedNanos) {
+        run.failWithResponse(
+                normalized,
+                response.provider(),
+                response.model(),
+                response.promptVersion(),
+                response.providerResponseId(),
+                reason.getErrorCode(),
+                reason.getMessage(),
+                elapsedMillis(startedNanos),
+                response.inputTokens(),
+                response.outputTokens()
+        );
     }
 
     private boolean isBlank(String value) {

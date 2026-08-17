@@ -124,6 +124,24 @@ public class AiAnalysisRun {
     }
 
     public void fail(String errorCode, String errorMessage, int latencyMs) {
+        finishFailure(errorCode, errorMessage, latencyMs);
+    }
+
+    public void failWithResponse(RecognitionResult response, String provider, String model,
+                                 String promptVersion, String providerResponseId,
+                                 String errorCode, String errorMessage, int latencyMs,
+                                 Integer inputTokens, Integer outputTokens) {
+        this.normalizedResponse = response;
+        this.provider = provider;
+        this.model = model;
+        this.promptVersion = promptVersion;
+        this.providerResponseId = providerResponseId;
+        this.inputTokens = inputTokens;
+        this.outputTokens = outputTokens;
+        finishFailure(errorCode, errorMessage, latencyMs);
+    }
+
+    private void finishFailure(String errorCode, String errorMessage, int latencyMs) {
         this.status = AnalysisStatus.FAILED;
         this.errorCode = errorCode;
         this.errorMessage = errorMessage == null

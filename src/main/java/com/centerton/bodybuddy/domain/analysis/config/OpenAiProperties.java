@@ -48,7 +48,7 @@ public class OpenAiProperties {
         private String model = "gpt-5-mini-2025-08-07";
 
         @NotBlank
-        private String promptVersion = "food-recognition-v1";
+        private String promptVersion = "food-recognition-v2";
 
         @Min(1)
         @Max(4096)
