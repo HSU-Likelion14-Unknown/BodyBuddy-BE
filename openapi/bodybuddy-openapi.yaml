@@ -501,10 +501,26 @@ components:
         consumedUnit: {type: string}
         nutritionStatus:
           type: string
-          enum: [CALCULATED, UNKNOWN]
-          description: DB 영양 계산 성공 여부
+          enum: [CALCULATED, ESTIMATED, UNKNOWN]
+          description: DB 영양 계산, AI 추정 또는 영양 정보 없음 상태
+        nutritionBasis:
+          type: [string, 'null']
+          enum: [CATALOG, AI_ESTIMATE, USER_CONFIRMED, null]
+        nutritionProvider: {type: [string, 'null']}
+        nutritionModel: {type: [string, 'null']}
+        nutritionPromptVersion: {type: [string, 'null']}
+        nutritionConfidence: {type: [number, 'null'], minimum: 0, maximum: 1}
         caloriesKcal: {type: [number, 'null'], minimum: 0}
+        carbohydrateG: {type: [number, 'null'], minimum: 0}
         proteinG: {type: [number, 'null'], minimum: 0}
+        fatG: {type: [number, 'null'], minimum: 0}
+        fiberG: {type: [number, 'null'], minimum: 0}
+        sodiumMg: {type: [number, 'null'], minimum: 0}
+        calciumMg: {type: [number, 'null'], minimum: 0}
+        ironMg: {type: [number, 'null'], minimum: 0}
+        potassiumMg: {type: [number, 'null'], minimum: 0}
+        vitaminAMcgRae: {type: [number, 'null'], minimum: 0}
+        vitaminCMg: {type: [number, 'null'], minimum: 0}
     Nutrition:
       type: object
       properties:

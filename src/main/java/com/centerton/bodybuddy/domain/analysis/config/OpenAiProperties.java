@@ -36,6 +36,10 @@ public class OpenAiProperties {
     @NotNull
     private FoodRecognition foodRecognition = new FoodRecognition();
 
+    @Valid
+    @NotNull
+    private FoodNutritionEstimation foodNutritionEstimation = new FoodNutritionEstimation();
+
     @Getter
     @Setter
     public static class FoodRecognition {
@@ -52,5 +56,20 @@ public class OpenAiProperties {
 
         @Pattern(regexp = "auto|low|high")
         private String imageDetail = "auto";
+    }
+
+    @Getter
+    @Setter
+    public static class FoodNutritionEstimation {
+
+        @NotBlank
+        private String model = "gpt-5-mini-2025-08-07";
+
+        @NotBlank
+        private String promptVersion = "food-nutrition-estimation-v1";
+
+        @Min(1)
+        @Max(4096)
+        private int maxOutputTokens = 500;
     }
 }

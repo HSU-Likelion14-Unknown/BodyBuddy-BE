@@ -1,7 +1,7 @@
 package com.centerton.bodybuddy.domain.analysis.config;
 
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,10 +11,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnProperty(
-        name = "bodybuddy.food-recognition.provider",
-        havingValue = "openai"
-)
+@ConditionalOnExpression("'${bodybuddy.food-recognition.provider:fake}' == 'openai' "
+        + "or '${bodybuddy.food-nutrition-estimation.provider:fake}' == 'openai'")
 @EnableConfigurationProperties(OpenAiProperties.class)
 public class OpenAiFoodRecognitionConfig {
 

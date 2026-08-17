@@ -1,5 +1,8 @@
 package com.centerton.bodybuddy.domain.meal.service;
 
+import com.centerton.bodybuddy.domain.analysis.client.FoodNutritionEstimationClient;
+import com.centerton.bodybuddy.domain.analysis.client.FoodNutritionEstimationInput;
+import com.centerton.bodybuddy.domain.analysis.client.FoodNutritionEstimationResponse;
 import com.centerton.bodybuddy.domain.analysis.entity.AiAnalysisRun;
 import com.centerton.bodybuddy.domain.analysis.entity.AnalysisRunType;
 import com.centerton.bodybuddy.domain.analysis.entity.AnalysisStatus;
@@ -17,6 +20,7 @@ import com.centerton.bodybuddy.domain.meal.dto.*;
 import com.centerton.bodybuddy.domain.meal.entity.Meal;
 import com.centerton.bodybuddy.domain.meal.entity.MealNutritionSummary;
 import com.centerton.bodybuddy.domain.meal.entity.MealStatus;
+import com.centerton.bodybuddy.domain.meal.entity.NutritionBasis;
 import com.centerton.bodybuddy.domain.meal.entity.NutritionValues;
 import com.centerton.bodybuddy.domain.meal.repository.MealItemRepository;
 import com.centerton.bodybuddy.domain.meal.repository.MealNutritionSummaryRepository;
@@ -38,6 +42,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -52,6 +59,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -64,6 +73,8 @@ class MealServiceTest {
     @Mock private MealNutritionSummaryRepository nutritionSummaryRepository;
     @Mock private AiAnalysisRunRepository analysisRunRepository;
     @Mock private FoodMatchingService foodMatchingService;
+    @Mock private FoodNutritionEstimationClient nutritionEstimationClient;
+    @Mock private TransactionOperations transactionOperations;
     @Mock private IdempotencyKeyRepository idempotencyKeyRepository;
     @Mock private MealImageStorage imageStorage;
     @Mock private ApplicationEventPublisher eventPublisher;
@@ -81,11 +92,22 @@ class MealServiceTest {
                 nutritionSummaryRepository,
                 analysisRunRepository,
                 foodMatchingService,
+                nutritionEstimationClient,
+                transactionOperations,
                 idempotencyKeyRepository,
                 imageStorage,
                 eventPublisher,
                 recommendationQueryService
         );
+        lenient().when(transactionOperations.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(new SimpleTransactionStatus());
+        });
+        lenient().when(mealRepository.findOwnedByIdForUpdate(anyString(), anyString()))
+                .thenAnswer(invocation -> mealRepository.findByMealIdAndUserUserId(
+                        invocation.getArgument(0),
+                        invocation.getArgument(1)
+                ));
         user = User.builder()
                 .userId("user-id")
                 .accessKeyHash("access-key-hash")
@@ -349,10 +371,15 @@ class MealServiceTest {
                 .isEqualByComparingTo("50.00");
         assertThat(response.getItems().getFirst().getNutritionStatus())
                 .isEqualTo(NutritionStatus.CALCULATED);
+        assertThat(response.getItems().getFirst().getNutritionBasis())
+                .isEqualTo(NutritionBasis.CATALOG);
         assertThat(response.getNutritionSummaryStatus())
                 .isEqualTo(NutritionSummaryStatus.COMPLETE);
         assertThat(response.getNutritionSummary().getProteinG())
                 .isEqualByComparingTo("5.00");
+        assertThat(response.getNutritionSummary().getBasis())
+                .isEqualTo(NutritionBasis.CATALOG);
+        verify(nutritionEstimationClient, never()).estimate(any());
     }
 
     @Test
@@ -491,6 +518,8 @@ class MealServiceTest {
         when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
                 .thenReturn(Optional.of(meal));
         when(foodMatchingService.matchByName("엄마표 특별식")).thenReturn(Optional.empty());
+        when(nutritionEstimationClient.estimate(any(FoodNutritionEstimationInput.class)))
+                .thenReturn(Optional.empty());
         when(mealItemRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
         when(nutritionSummaryRepository.findById("meal-id")).thenReturn(Optional.empty());
         when(nutritionSummaryRepository.save(any(MealNutritionSummary.class)))
@@ -513,6 +542,79 @@ class MealServiceTest {
         assertThat(response.getNutritionSummaryStatus())
                 .isEqualTo(NutritionSummaryStatus.PARTIAL);
         assertThat(response.getNutritionSummary().getCaloriesKcal()).isNull();
+    }
+
+    @Test
+    void estimatesUnmatchedFoodForConfirmedAmountAndStoresMetadata() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "짜장면", LocalDateTime.now());
+        meal.markReviewRequired();
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+        when(foodMatchingService.matchByName("짜장면")).thenReturn(Optional.empty());
+        when(nutritionEstimationClient.estimate(any(FoodNutritionEstimationInput.class)))
+                .thenReturn(Optional.of(new FoodNutritionEstimationResponse(
+                        NutritionValues.builder()
+                                .caloriesKcal(new BigDecimal("650"))
+                                .carbohydrateG(new BigDecimal("110"))
+                                .proteinG(new BigDecimal("20"))
+                                .fatG(new BigDecimal("15"))
+                                .fiberG(new BigDecimal("6"))
+                                .sodiumMg(new BigDecimal("1800"))
+                                .calciumMg(new BigDecimal("80"))
+                                .ironMg(new BigDecimal("3"))
+                                .potassiumMg(new BigDecimal("550"))
+                                .vitaminAMcgRae(new BigDecimal("120"))
+                                .vitaminCMg(new BigDecimal("12"))
+                                .build(),
+                        new BigDecimal("0.78"),
+                        "OPENAI",
+                        "gpt-5-mini-2025-08-07",
+                        "food-nutrition-estimation-v1",
+                        "resp_nutrition",
+                        80,
+                        30
+                )));
+        when(mealItemRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(nutritionSummaryRepository.findById("meal-id")).thenReturn(Optional.empty());
+        when(nutritionSummaryRepository.save(any(MealNutritionSummary.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        MealConfirmRes response = mealService.confirmMeal(
+                "Bearer raw-access-key",
+                "meal-id",
+                new MealConfirmReq(
+                        List.of(new MealItemInputReq(
+                                null, "짜장면", new BigDecimal("1.5"), "그릇"
+                        )),
+                        OffsetDateTime.now()
+                )
+        );
+
+        MealItemRes item = response.getItems().getFirst();
+        assertThat(item.getFoodId()).isNull();
+        assertThat(item.getNutritionStatus()).isEqualTo(NutritionStatus.ESTIMATED);
+        assertThat(item.getNutritionBasis()).isEqualTo(NutritionBasis.AI_ESTIMATE);
+        assertThat(item.getNutritionProvider()).isEqualTo("OPENAI");
+        assertThat(item.getNutritionModel()).isEqualTo("gpt-5-mini-2025-08-07");
+        assertThat(item.getNutritionPromptVersion()).isEqualTo("food-nutrition-estimation-v1");
+        assertThat(item.getNutritionConfidence()).isEqualByComparingTo("0.78");
+        assertThat(item.getCaloriesKcal()).isEqualByComparingTo("650");
+        assertThat(response.getNutritionSummaryStatus()).isEqualTo(NutritionSummaryStatus.COMPLETE);
+        assertThat(response.getNutritionSummary().getCaloriesKcal()).isEqualByComparingTo("650");
+        assertThat(response.getNutritionSummary().getBasis())
+                .isEqualTo(NutritionBasis.AI_ESTIMATE);
+
+        ArgumentCaptor<FoodNutritionEstimationInput> inputCaptor =
+                ArgumentCaptor.forClass(FoodNutritionEstimationInput.class);
+        verify(nutritionEstimationClient).estimate(inputCaptor.capture());
+        assertThat(inputCaptor.getValue().foodName()).isEqualTo("짜장면");
+        assertThat(inputCaptor.getValue().consumedAmount()).isEqualByComparingTo("1.5");
+        assertThat(inputCaptor.getValue().consumedUnit()).isEqualTo("그릇");
+        var order = inOrder(nutritionEstimationClient, transactionOperations);
+        order.verify(nutritionEstimationClient).estimate(any(FoodNutritionEstimationInput.class));
+        order.verify(transactionOperations).execute(any());
+        verify(mealRepository).findOwnedByIdForUpdate("meal-id", "user-id");
     }
 
     @Test

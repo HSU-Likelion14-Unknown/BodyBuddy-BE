@@ -2,6 +2,7 @@ package com.centerton.bodybuddy.domain.meal.dto;
 
 import com.centerton.bodybuddy.domain.meal.entity.MealItem;
 import com.centerton.bodybuddy.domain.meal.entity.MealItemSource;
+import com.centerton.bodybuddy.domain.meal.entity.NutritionBasis;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -18,6 +19,11 @@ public class MealItemRes {
     private BigDecimal confidence;
     private MealItemSource source;
     private NutritionStatus nutritionStatus;
+    private NutritionBasis nutritionBasis;
+    private String nutritionProvider;
+    private String nutritionModel;
+    private String nutritionPromptVersion;
+    private BigDecimal nutritionConfidence;
     private BigDecimal caloriesKcal;
     private BigDecimal carbohydrateG;
     private BigDecimal proteinG;
@@ -40,9 +46,12 @@ public class MealItemRes {
                 .consumedUnit(item.getAmountUnit())
                 .confidence(item.getConfidence())
                 .source(item.getSource())
-                .nutritionStatus(nutrition == null
-                        ? NutritionStatus.UNKNOWN
-                        : NutritionStatus.CALCULATED);
+                .nutritionStatus(nutritionStatus(item))
+                .nutritionBasis(item.getNutritionBasis())
+                .nutritionProvider(item.getNutritionProvider())
+                .nutritionModel(item.getNutritionModel())
+                .nutritionPromptVersion(item.getNutritionPromptVersion())
+                .nutritionConfidence(item.getNutritionConfidence());
         if (nutrition != null) {
             builder.caloriesKcal(nutrition.getCaloriesKcal())
                     .carbohydrateG(nutrition.getCarbohydrateG())
@@ -57,5 +66,14 @@ public class MealItemRes {
                     .vitaminCMg(nutrition.getVitaminCMg());
         }
         return builder.build();
+    }
+
+    private static NutritionStatus nutritionStatus(MealItem item) {
+        if (item.getNutrition() == null) {
+            return NutritionStatus.UNKNOWN;
+        }
+        return item.getNutritionBasis() == NutritionBasis.AI_ESTIMATE
+                ? NutritionStatus.ESTIMATED
+                : NutritionStatus.CALCULATED;
     }
 }
