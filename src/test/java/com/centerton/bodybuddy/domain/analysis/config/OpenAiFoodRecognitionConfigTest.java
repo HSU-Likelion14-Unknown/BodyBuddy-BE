@@ -23,4 +23,20 @@ class OpenAiFoodRecognitionConfigTest {
             assertThat(context).hasSingleBean(RestClient.class);
         });
     }
+
+    @Test
+    void createsSharedOpenAiRestClientForNutritionEstimationOnly() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(OpenAiFoodRecognitionConfig.class)
+                .withPropertyValues(
+                        "bodybuddy.food-recognition.provider=fake",
+                        "bodybuddy.food-nutrition-estimation.provider=openai",
+                        "bodybuddy.openai.api-key=test-key"
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(OpenAiProperties.class);
+                    assertThat(context).hasSingleBean(RestClient.class);
+                });
+    }
 }

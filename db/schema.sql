@@ -248,6 +248,11 @@ CREATE TABLE meal_items (
     potassium_mg DECIMAL(12,2) NULL,
     vitamin_a_mcg_rae DECIMAL(12,2) NULL,
     vitamin_c_mg DECIMAL(12,2) NULL,
+    nutrition_basis VARCHAR(24) NULL,
+    nutrition_provider VARCHAR(30) NULL,
+    nutrition_model VARCHAR(100) NULL,
+    nutrition_prompt_version VARCHAR(40) NULL,
+    nutrition_confidence DECIMAL(5,4) NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (meal_item_id),
@@ -259,6 +264,12 @@ CREATE TABLE meal_items (
         (amount > 0 AND amount_unit IS NOT NULL)
     ),
     CONSTRAINT chk_meal_items_confidence CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1),
+    CONSTRAINT chk_meal_items_nutrition_basis CHECK (
+        nutrition_basis IS NULL OR nutrition_basis IN ('AI_ESTIMATE', 'USER_CONFIRMED', 'CATALOG')
+    ),
+    CONSTRAINT chk_meal_items_nutrition_confidence CHECK (
+        nutrition_confidence IS NULL OR nutrition_confidence BETWEEN 0 AND 1
+    ),
     CONSTRAINT chk_meal_items_nutrition_nonnegative CHECK (
         (calories_kcal IS NULL OR calories_kcal >= 0)
         AND (carbohydrate_g IS NULL OR carbohydrate_g >= 0)

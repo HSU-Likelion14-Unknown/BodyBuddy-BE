@@ -37,6 +37,14 @@ OPENAI_CONNECT_TIMEOUT=5s
 OPENAI_READ_TIMEOUT=45s
 ```
 
+DB에 매칭되지 않은 음식의 영양성분도 OpenAI로 추정하려면 아래 provider를 사용합니다.
+미설정 시 `FOOD_RECOGNITION_PROVIDER` 값을 따르므로 음식 인식이 `openai`이면 함께 활성화됩니다.
+
+```text
+FOOD_NUTRITION_ESTIMATION_PROVIDER=openai
+OPENAI_FOOD_NUTRITION_MODEL=gpt-5-mini-2025-08-07
+```
+
 API 키는 저장소 파일에 작성하거나 커밋하지 않습니다.
 
 ## 🌿 브랜치 네이밍 규칙

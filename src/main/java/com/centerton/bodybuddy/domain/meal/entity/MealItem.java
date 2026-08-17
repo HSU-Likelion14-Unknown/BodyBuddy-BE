@@ -51,4 +51,20 @@ public class MealItem extends BaseEntity {
 
     @Embedded
     private NutritionValues nutrition;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "nutrition_basis", length = 24)
+    private NutritionBasis nutritionBasis;
+
+    @Column(name = "nutrition_provider", length = 30)
+    private String nutritionProvider;
+
+    @Column(name = "nutrition_model", length = 100)
+    private String nutritionModel;
+
+    @Column(name = "nutrition_prompt_version", length = 40)
+    private String nutritionPromptVersion;
+
+    @Column(name = "nutrition_confidence", precision = 5, scale = 4)
+    private BigDecimal nutritionConfidence;
 }

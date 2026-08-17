@@ -1,5 +1,8 @@
 package com.centerton.bodybuddy.domain.meal.service;
 
+import com.centerton.bodybuddy.domain.analysis.client.FoodNutritionEstimationClient;
+import com.centerton.bodybuddy.domain.analysis.client.FoodNutritionEstimationInput;
+import com.centerton.bodybuddy.domain.analysis.client.FoodNutritionEstimationResponse;
 import com.centerton.bodybuddy.domain.analysis.entity.AiAnalysisRun;
 import com.centerton.bodybuddy.domain.analysis.entity.AnalysisRunType;
 import com.centerton.bodybuddy.domain.analysis.entity.AnalysisStatus;
@@ -25,6 +28,7 @@ import com.centerton.bodybuddy.domain.user.repository.UserRepository;
 import com.centerton.bodybuddy.global.exception.BaseException;
 import com.centerton.bodybuddy.global.response.code.ErrorResponseCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +46,7 @@ import java.util.function.Function;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MealService {
 
     private static final String TEXT_MEAL_CREATE = "TEXT_MEAL_CREATE";
@@ -54,6 +59,7 @@ public class MealService {
     private final MealNutritionSummaryRepository nutritionSummaryRepository;
     private final AiAnalysisRunRepository analysisRunRepository;
     private final FoodMatchingService foodMatchingService;
+    private final FoodNutritionEstimationClient nutritionEstimationClient;
     private final IdempotencyKeyRepository idempotencyKeyRepository;
     private final MealImageStorage imageStorage;
     private final ApplicationEventPublisher eventPublisher;
@@ -390,7 +396,7 @@ public class MealService {
                 MealNutritionSummary.builder()
                         .meal(meal)
                         .nutrition(totalNutrition)
-                        .basis(NutritionBasis.USER_CONFIRMED)
+                        .basis(summaryBasis(items))
                         .calculatedAt(calculatedAt)
                         .build()
         );
@@ -401,7 +407,7 @@ public class MealService {
     private MealItem createConfirmedItem(Meal meal, MealItemInputReq request, int sortOrder) {
         String requestedFoodId = trimToNull(request.getFoodId());
         FoodCatalogMatch catalogMatch = resolveCatalogMatch(requestedFoodId, request.getFoodName());
-        NutritionValues nutrition = calculateNutrition(catalogMatch, request);
+        NutritionSnapshot nutritionSnapshot = resolveNutrition(catalogMatch, request);
 
         return MealItem.builder()
                 .mealItemId(UUID.randomUUID().toString())
@@ -414,7 +420,12 @@ public class MealService {
                         ? MealItemSource.USER_ADDED
                         : MealItemSource.USER_EDITED)
                 .sortOrder(sortOrder)
-                .nutrition(nutrition)
+                .nutrition(nutritionSnapshot.nutrition())
+                .nutritionBasis(nutritionSnapshot.basis())
+                .nutritionProvider(nutritionSnapshot.provider())
+                .nutritionModel(nutritionSnapshot.model())
+                .nutritionPromptVersion(nutritionSnapshot.promptVersion())
+                .nutritionConfidence(nutritionSnapshot.confidence())
                 .build();
     }
 
@@ -424,6 +435,44 @@ public class MealService {
                     .orElseThrow(() -> new BaseException(ErrorResponseCode.MEAL_ITEMS_INVALID));
         }
         return foodMatchingService.matchByName(foodName).orElse(null);
+    }
+
+    private NutritionSnapshot resolveNutrition(FoodCatalogMatch catalogMatch,
+                                                MealItemInputReq request) {
+        if (catalogMatch != null) {
+            NutritionValues catalogNutrition = calculateNutrition(catalogMatch, request);
+            return catalogNutrition == null
+                    ? NutritionSnapshot.unknown()
+                    : NutritionSnapshot.catalog(catalogNutrition);
+        }
+
+        try {
+            return nutritionEstimationClient.estimate(new FoodNutritionEstimationInput(
+                            request.getFoodName().trim(),
+                            request.getAmount(),
+                            request.getUnit().trim()
+                    ))
+                    .filter(this::validEstimate)
+                    .map(NutritionSnapshot::estimated)
+                    .orElseGet(NutritionSnapshot::unknown);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "Food nutrition estimation failed; preserving UNKNOWN nutrition - type: {}",
+                    exception.getClass().getSimpleName()
+            );
+            return NutritionSnapshot.unknown();
+        }
+    }
+
+    private boolean validEstimate(FoodNutritionEstimationResponse estimate) {
+        return estimate != null
+                && estimate.nutrition() != null
+                && estimate.confidence() != null
+                && estimate.confidence().compareTo(BigDecimal.ZERO) >= 0
+                && estimate.confidence().compareTo(BigDecimal.ONE) <= 0
+                && !isBlank(estimate.provider())
+                && !isBlank(estimate.model())
+                && !isBlank(estimate.promptVersion());
     }
 
     private NutritionValues calculateNutrition(FoodCatalogMatch match, MealItemInputReq request) {
@@ -503,11 +552,25 @@ public class MealService {
                 : NutritionSummaryStatus.PARTIAL;
     }
 
+    private NutritionBasis summaryBasis(List<MealItem> items) {
+        if (items.stream().anyMatch(item -> item.getNutritionBasis() == NutritionBasis.AI_ESTIMATE)) {
+            return NutritionBasis.AI_ESTIMATE;
+        }
+        if (items.stream().anyMatch(item -> item.getNutritionBasis() == NutritionBasis.CATALOG)) {
+            return NutritionBasis.CATALOG;
+        }
+        return NutritionBasis.USER_CONFIRMED;
+    }
+
     private String trimToNull(String value) {
         if (value == null || value.isBlank()) {
             return null;
         }
         return value.trim();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private OffsetDateTime toUtc(LocalDateTime value) {
@@ -518,5 +581,40 @@ public class MealService {
             List<MealItem> items,
             MealNutritionSummary summary
     ) {
+    }
+
+    private record NutritionSnapshot(
+            NutritionValues nutrition,
+            NutritionBasis basis,
+            String provider,
+            String model,
+            String promptVersion,
+            BigDecimal confidence
+    ) {
+        private static NutritionSnapshot catalog(NutritionValues nutrition) {
+            return new NutritionSnapshot(
+                    nutrition,
+                    NutritionBasis.CATALOG,
+                    null,
+                    null,
+                    null,
+                    null
+            );
+        }
+
+        private static NutritionSnapshot estimated(FoodNutritionEstimationResponse estimate) {
+            return new NutritionSnapshot(
+                    estimate.nutrition(),
+                    NutritionBasis.AI_ESTIMATE,
+                    estimate.provider(),
+                    estimate.model(),
+                    estimate.promptVersion(),
+                    estimate.confidence()
+            );
+        }
+
+        private static NutritionSnapshot unknown() {
+            return new NutritionSnapshot(null, null, null, null, null, null);
+        }
     }
 }
