@@ -5,11 +5,14 @@ import com.centerton.bodybuddy.domain.room.service.*;
 import com.centerton.bodybuddy.global.response.SuccessResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/v1/rooms")
@@ -24,6 +27,7 @@ public class RoomController {
     private final RoomLeaveService roomLeaveService;
     private final RoomCoverService roomCoverService;
     private final MealReactionService mealReactionService;
+    private final RoomFeedService roomFeedService;
 
     @PostMapping
     public ResponseEntity<SuccessResponse<RoomCreateRes>> createRoom(
@@ -117,6 +121,18 @@ public class RoomController {
             @PathVariable String mealId
     ) {
         MealReactionsRes response = mealReactionService.getReactions(authorization, roomId, mealId);
+        return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
+    }
+
+    @GetMapping("/{roomId}/feed")
+    public ResponseEntity<SuccessResponse<RoomFeedRes>> getFeed(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate date
+    ) {
+        RoomFeedRes response = roomFeedService.getFeed(authorization, roomId, date);
         return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
     }
 }
