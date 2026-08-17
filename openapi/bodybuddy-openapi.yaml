@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: BodyBuddy API
-  version: 1.2.0
+  version: 1.3.0
   description: 중앙톤 Notion API 명세와 MySQL 스키마를 기준으로 한 MVP 계약
 servers:
   - url: /api/v1
@@ -127,6 +127,10 @@ paths:
     get:
       tags: [Meal]
       summary: 식사 상세 조회
+      description: |
+        비동기 음식 인식 상태를 조회한다. ANALYZING 또는 REANALYZING이면 폴링을 계속하고,
+        REVIEW_REQUIRED이면 인식 후보 API를 조회한다. FAILED이면 recognitionFailure가 최근
+        실패 사유를 제공하며, 화면은 recognizedItems가 아닌 status를 기준으로 분기한다.
       responses:
         '200':
           description: 조회 성공
@@ -144,6 +148,9 @@ paths:
     get:
       tags: [AI]
       summary: 음식 인식 후보 조회
+      description: |
+        식사 상태가 REVIEW_REQUIRED일 때만 조회할 수 있다. 후보 중 하나라도 서버의 최소
+        신뢰도 이상이면 저신뢰도 후보를 포함한 전체 후보를 반환한다.
       parameters:
         - $ref: '#/components/parameters/MealId'
       responses:
@@ -158,6 +165,7 @@ paths:
     post:
       tags: [AI]
       summary: 음식 재인식
+      description: REVIEW_REQUIRED 또는 FAILED 상태의 기존 입력을 다시 분석한다.
       parameters:
         - $ref: '#/components/parameters/MealId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -487,6 +495,7 @@ components:
       enum: [NO_FOOD, LOW_CONFIDENCE, AI_UNAVAILABLE, INVALID_RESPONSE, UNKNOWN]
     RecognitionFailure:
       type: object
+      description: FAILED 상태의 최근 음식 인식 실패 사유와 사용자 표시용 메시지
       required: [reason, message]
       properties:
         reason: {$ref: '#/components/schemas/RecognitionFailureReason'}
