@@ -5,6 +5,7 @@ import com.centerton.bodybuddy.domain.calendar.dto.DailyMealsRes;
 import com.centerton.bodybuddy.domain.calendar.dto.MonthlyStatsRes;
 import com.centerton.bodybuddy.domain.meal.entity.MealNutritionSummary;
 import com.centerton.bodybuddy.domain.meal.entity.MealStatus;
+import com.centerton.bodybuddy.domain.meal.repository.MealItemRepository;
 import com.centerton.bodybuddy.domain.meal.repository.MealNutritionSummaryRepository;
 import com.centerton.bodybuddy.domain.recommendation.entity.Recommendation;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationDecision;
@@ -25,8 +26,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +40,7 @@ public class CalendarService {
     private final RecommendationRepository recommendationRepository;
     private final RecommendationDecisionRepository recommendationDecisionRepository;
     private final RecommendationDishRepository recommendationDishRepository;
+    private final MealItemRepository mealItemRepository;
 
     @Transactional(readOnly = true)
     public DailyMealsRes getMealsByDate(String authorization, LocalDate date) {
@@ -52,11 +56,18 @@ public class CalendarService {
                 endUtc
         );
 
+        Map<String, List<String>> foodNamesByMealId =
+                getFoodNamesByMealId(summaries);
+
         List<DailyMealsRes.MealInfo> mealInfos = summaries.stream()
                 .map(s -> DailyMealsRes.MealInfo.builder()
                         .mealId(s.getMealId())
                         .directInputText(s.getMeal().getDirectInputText())
-                        .photoUrl("/api/v1/meals/images/" + s.getMeal().getPhotoObjectKey())
+                        .photoUrl(createPhotoUrl(s.getMeal().getPhotoObjectKey()))
+                        .foodNames(foodNamesByMealId.getOrDefault(
+                                s.getMealId(),
+                                List.of()
+                        ))
                         .eatenAt(s.getMeal().getEatenAt())
                         .calories(s.getNutrition().getCaloriesKcal())
                         .carbohydrate(s.getNutrition().getCarbohydrateG())
@@ -70,6 +81,38 @@ public class CalendarService {
                 .date(date.toString())
                 .meals(mealInfos)
                 .build();
+    }
+
+    private Map<String, List<String>> getFoodNamesByMealId(
+            List<MealNutritionSummary> summaries
+    ) {
+        if (summaries.isEmpty()) {
+            return Map.of();
+        }
+
+        List<String> mealIds = summaries.stream()
+                .map(MealNutritionSummary::getMealId)
+                .toList();
+
+        return mealItemRepository.findFoodNamesByMealIds(mealIds)
+                .stream()
+                .collect(
+                        Collectors.groupingBy(
+                                row -> (String) row[0],
+                                Collectors.mapping(
+                                        row -> (String) row[1],
+                                        Collectors.toList()
+                                )
+                        )
+                );
+    }
+
+    private String createPhotoUrl(String photoObjectKey) {
+        if (photoObjectKey == null || photoObjectKey.isBlank()) {
+            return null;
+        }
+
+        return "/api/v1/meals/images/" + photoObjectKey;
     }
 
     private String getTopRecommendedDishName(String mealId) {
