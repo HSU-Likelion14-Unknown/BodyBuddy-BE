@@ -103,6 +103,11 @@ class MealServiceTest {
             TransactionCallback<?> callback = invocation.getArgument(0);
             return callback.doInTransaction(new SimpleTransactionStatus());
         });
+        lenient().when(mealRepository.findOwnedByIdForUpdate(anyString(), anyString()))
+                .thenAnswer(invocation -> mealRepository.findByMealIdAndUserUserId(
+                        invocation.getArgument(0),
+                        invocation.getArgument(1)
+                ));
         user = User.builder()
                 .userId("user-id")
                 .accessKeyHash("access-key-hash")
@@ -609,6 +614,7 @@ class MealServiceTest {
         var order = inOrder(nutritionEstimationClient, transactionOperations);
         order.verify(nutritionEstimationClient).estimate(any(FoodNutritionEstimationInput.class));
         order.verify(transactionOperations).execute(any());
+        verify(mealRepository).findOwnedByIdForUpdate("meal-id", "user-id");
     }
 
     @Test

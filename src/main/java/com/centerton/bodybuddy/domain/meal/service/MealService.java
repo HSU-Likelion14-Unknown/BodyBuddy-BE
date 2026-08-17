@@ -290,7 +290,7 @@ public class MealService {
                 .withOffsetSameInstant(ZoneOffset.UTC)
                 .toLocalDateTime();
         MealWriteResult result = Objects.requireNonNull(transactionOperations.execute(status -> {
-            Meal meal = requireMealStatus(
+            Meal meal = requireMealStatusForUpdate(
                     mealId,
                     user.getUserId(),
                     MealStatus.REVIEW_REQUIRED,
@@ -343,7 +343,7 @@ public class MealService {
 
         List<PreparedMealItem> preparedItems = prepareMealItems(request.getItems());
         MealWriteResult result = Objects.requireNonNull(transactionOperations.execute(status -> {
-            Meal meal = requireMealStatus(
+            Meal meal = requireMealStatusForUpdate(
                     mealId,
                     user.getUserId(),
                     MealStatus.CONFIRMED,
@@ -398,10 +398,24 @@ public class MealService {
     private Meal requireMealStatus(String mealId, String userId, MealStatus requiredStatus,
                                    ErrorResponseCode errorCode) {
         Meal meal = activeMeal(mealId, userId);
+        validateMealStatus(meal, requiredStatus, errorCode);
+        return meal;
+    }
+
+    private Meal requireMealStatusForUpdate(String mealId, String userId,
+                                            MealStatus requiredStatus,
+                                            ErrorResponseCode errorCode) {
+        Meal meal = mealRepository.findOwnedByIdForUpdate(mealId, userId)
+                .orElseThrow(() -> new BaseException(ErrorResponseCode.MEAL_NOT_FOUND));
+        validateMealStatus(meal, requiredStatus, errorCode);
+        return meal;
+    }
+
+    private void validateMealStatus(Meal meal, MealStatus requiredStatus,
+                                    ErrorResponseCode errorCode) {
         if (meal.getStatus() != requiredStatus) {
             throw new BaseException(errorCode);
         }
-        return meal;
     }
 
     private List<PreparedMealItem> prepareMealItems(List<MealItemInputReq> requests) {
