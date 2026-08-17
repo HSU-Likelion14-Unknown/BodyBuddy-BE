@@ -262,8 +262,10 @@ public class MealService {
                 .map(AiAnalysisRun::getNormalizedResponse)
                 .orElse(null);
         AiAnalysisRun latestFailedRun = meal.getStatus() == MealStatus.FAILED
-                ? analysisRunRepository.findFirstByMealMealIdOrderByStartedAtDesc(mealId)
-                .filter(run -> run.getStatus() == AnalysisStatus.FAILED)
+                ? analysisRunRepository.findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(
+                        mealId,
+                        AnalysisStatus.FAILED
+                )
                 .orElse(null)
                 : null;
 

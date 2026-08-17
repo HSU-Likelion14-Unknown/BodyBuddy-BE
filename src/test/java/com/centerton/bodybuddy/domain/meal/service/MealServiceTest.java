@@ -680,8 +680,8 @@ class MealServiceTest {
                 .thenReturn(Optional.of(meal));
         when(analysisRunRepository.findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(
                 meal.getMealId(), AnalysisStatus.SUCCEEDED)).thenReturn(Optional.empty());
-        when(analysisRunRepository.findFirstByMealMealIdOrderByStartedAtDesc(meal.getMealId()))
-                .thenReturn(Optional.of(run));
+        when(analysisRunRepository.findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(
+                meal.getMealId(), AnalysisStatus.FAILED)).thenReturn(Optional.of(run));
         when(mealItemRepository.findAllByMealMealIdOrderBySortOrderAsc(meal.getMealId()))
                 .thenReturn(List.of());
         when(nutritionSummaryRepository.findById(meal.getMealId()))
@@ -697,6 +697,13 @@ class MealServiceTest {
         assertThat(result.getRecognitionFailure().getMessage())
                 .isEqualTo(RecognitionFailureReason.LOW_CONFIDENCE.getMessage())
                 .doesNotContain("provider detail");
+        verify(analysisRunRepository)
+                .findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(
+                        meal.getMealId(),
+                        AnalysisStatus.FAILED
+                );
+        verify(analysisRunRepository, never())
+                .findFirstByMealMealIdOrderByStartedAtDesc(meal.getMealId());
     }
 
     private void authenticate(User authenticatedUser) {
