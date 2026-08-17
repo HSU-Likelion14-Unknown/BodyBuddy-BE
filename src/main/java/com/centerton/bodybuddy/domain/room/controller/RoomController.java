@@ -23,6 +23,7 @@ public class RoomController {
     private final RoomListService roomListService;
     private final RoomLeaveService roomLeaveService;
     private final RoomCoverService roomCoverService;
+    private final MealReactionService mealReactionService;
 
     @PostMapping
     public ResponseEntity<SuccessResponse<RoomCreateRes>> createRoom(
@@ -85,5 +86,26 @@ public class RoomController {
     ) {
         RoomCoverUpdateRes response = roomCoverService.updateCover(authorization, roomId, image);
         return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
+    }
+
+    @PutMapping("/{roomId}/meals/{mealId}/reactions")
+    public ResponseEntity<
+            SuccessResponse<MealReactionsUpdateRes>
+            > updateMyReactions(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId,
+            @PathVariable String mealId,
+            @Valid @RequestBody MealReactionsUpdateReq request
+    ) {
+        MealReactionsUpdateRes response =
+                mealReactionService.updateMyReactions(
+                        authorization,
+                        roomId,
+                        mealId,
+                        request
+                );
+
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(SuccessResponse.from(response));
     }
 }
