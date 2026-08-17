@@ -58,7 +58,7 @@ class OpenAiFoodRecognitionClientTest {
                 .andExpect(request -> requestBody.set(bodyOf(request)))
                 .andRespond(withSuccess(
                         openAiResponse("""
-                                {"candidates":[
+                                {"resultType":"FOOD","candidates":[
                                   {"foodName":"두부","confidence":0.96},
                                   {"foodName":"김치","confidence":0.82}
                                 ]}
@@ -71,8 +71,9 @@ class OpenAiFoodRecognitionClientTest {
         );
 
         assertThat(result.provider()).isEqualTo("OPENAI");
+        assertThat(result.resultType()).isEqualTo(FoodRecognitionResultType.FOOD);
         assertThat(result.model()).isEqualTo("gpt-5-mini-2025-08-07");
-        assertThat(result.promptVersion()).isEqualTo("food-recognition-v1");
+        assertThat(result.promptVersion()).isEqualTo("food-recognition-v2");
         assertThat(result.providerResponseId()).isEqualTo("resp_123");
         assertThat(result.inputTokens()).isEqualTo(120);
         assertThat(result.outputTokens()).isEqualTo(24);
@@ -89,6 +90,10 @@ class OpenAiFoodRecognitionClientTest {
                 .isEqualTo("json_schema");
         assertThat(body.path("text").path("format").path("strict").asBoolean())
                 .isTrue();
+        assertThat(body.path("text").path("format").path("schema")
+                .path("properties").path("resultType").path("enum"))
+                .extracting(JsonNode::stringValue)
+                .containsExactly("FOOD", "NO_FOOD");
         assertThat(body.path("input").get(0).path("content").get(0).path("text").stringValue())
                 .contains("두부와 김치");
         server.verify();
@@ -101,7 +106,9 @@ class OpenAiFoodRecognitionClientTest {
                 .andExpect(request -> requestBody.set(bodyOf(request)))
                 .andRespond(withSuccess(
                         openAiResponse("""
-                                {"candidates":[{"foodName":"김치찌개","confidence":0.91}]}
+                                {"resultType":"FOOD","candidates":[
+                                  {"foodName":"김치찌개","confidence":0.91}
+                                ]}
                                 """),
                         MediaType.APPLICATION_JSON
                 ));
@@ -122,17 +129,78 @@ class OpenAiFoodRecognitionClientTest {
     }
 
     @Test
+    void acceptsNoFoodWithEmptyCandidates() {
+        server.expect(once(), requestTo("https://api.openai.test/v1/responses"))
+                .andRespond(withSuccess(
+                        openAiResponse("""
+                                {"resultType":"NO_FOOD","candidates":[]}
+                                """),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        FoodRecognitionResponse result = client.recognize(
+                FoodRecognitionInput.text("음식이 아닌 입력")
+        );
+
+        assertThat(result.resultType()).isEqualTo(FoodRecognitionResultType.NO_FOOD);
+        assertThat(result.candidates()).isEmpty();
+        server.verify();
+    }
+
+    @Test
     void rejectsInvalidStructuredCandidate() throws Exception {
         server.expect(once(), requestTo("https://api.openai.test/v1/responses"))
                 .andRespond(withSuccess(
                         openAiResponse("""
-                                {"candidates":[{"foodName":"김치찌개","confidence":1.2}]}
+                                {"resultType":"FOOD","candidates":[
+                                  {"foodName":"김치찌개","confidence":1.2}
+                                ]}
                                 """),
                         MediaType.APPLICATION_JSON
                 ));
 
         assertThatThrownBy(() -> client.recognize(
                 FoodRecognitionInput.text("김치찌개")
+        )).isInstanceOfSatisfying(BaseException.class, exception ->
+                assertThat(exception.getBaseResponseCode())
+                        .isEqualTo(ErrorResponseCode.AI_BAD_RESPONSE)
+        );
+        server.verify();
+    }
+
+    @Test
+    void rejectsFoodResultWithoutCandidates() {
+        server.expect(once(), requestTo("https://api.openai.test/v1/responses"))
+                .andRespond(withSuccess(
+                        openAiResponse("""
+                                {"resultType":"FOOD","candidates":[]}
+                                """),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        assertThatThrownBy(() -> client.recognize(
+                FoodRecognitionInput.text("모호한 입력")
+        )).isInstanceOfSatisfying(BaseException.class, exception ->
+                assertThat(exception.getBaseResponseCode())
+                        .isEqualTo(ErrorResponseCode.AI_BAD_RESPONSE)
+        );
+        server.verify();
+    }
+
+    @Test
+    void rejectsNoFoodResultWithCandidates() {
+        server.expect(once(), requestTo("https://api.openai.test/v1/responses"))
+                .andRespond(withSuccess(
+                        openAiResponse("""
+                                {"resultType":"NO_FOOD","candidates":[
+                                  {"foodName":"김치찌개","confidence":0.80}
+                                ]}
+                                """),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        assertThatThrownBy(() -> client.recognize(
+                FoodRecognitionInput.text("모호한 입력")
         )).isInstanceOfSatisfying(BaseException.class, exception ->
                 assertThat(exception.getBaseResponseCode())
                         .isEqualTo(ErrorResponseCode.AI_BAD_RESPONSE)

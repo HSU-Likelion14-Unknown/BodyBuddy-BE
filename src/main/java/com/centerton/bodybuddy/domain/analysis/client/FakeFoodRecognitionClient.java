@@ -21,6 +21,7 @@ public class FakeFoodRecognitionClient implements FoodRecognitionClient {
                 ? input.text().trim()
                 : "김치찌개";
         return new FoodRecognitionResponse(
+                FoodRecognitionResultType.FOOD,
                 List.of(new FoodRecognitionCandidate(foodName, new BigDecimal("0.8500"))),
                 "FAKE",
                 "fake-food-recognition-v1",

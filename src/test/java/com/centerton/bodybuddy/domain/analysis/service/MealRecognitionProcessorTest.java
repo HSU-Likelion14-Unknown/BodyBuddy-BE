@@ -4,9 +4,12 @@ import com.centerton.bodybuddy.domain.analysis.client.FoodRecognitionCandidate;
 import com.centerton.bodybuddy.domain.analysis.client.FoodRecognitionClient;
 import com.centerton.bodybuddy.domain.analysis.client.FoodRecognitionInput;
 import com.centerton.bodybuddy.domain.analysis.client.FoodRecognitionResponse;
+import com.centerton.bodybuddy.domain.analysis.client.FoodRecognitionResultType;
+import com.centerton.bodybuddy.domain.analysis.config.FoodRecognitionProperties;
 import com.centerton.bodybuddy.domain.analysis.entity.AiAnalysisRun;
 import com.centerton.bodybuddy.domain.analysis.entity.AnalysisRunType;
 import com.centerton.bodybuddy.domain.analysis.entity.AnalysisStatus;
+import com.centerton.bodybuddy.domain.analysis.entity.RecognitionFailureReason;
 import com.centerton.bodybuddy.domain.analysis.repository.AiAnalysisRunRepository;
 import com.centerton.bodybuddy.domain.food.entity.Food;
 import com.centerton.bodybuddy.domain.food.service.FoodCatalogMatch;
@@ -18,6 +21,8 @@ import com.centerton.bodybuddy.domain.meal.repository.MealRepository;
 import com.centerton.bodybuddy.domain.meal.storage.MealImageStorage;
 import com.centerton.bodybuddy.domain.meal.storage.StoredMealImage;
 import com.centerton.bodybuddy.domain.user.entity.User;
+import com.centerton.bodybuddy.global.exception.BaseException;
+import com.centerton.bodybuddy.global.response.code.ErrorResponseCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +36,8 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,12 +54,15 @@ class MealRecognitionProcessorTest {
 
     @BeforeEach
     void setUp() {
+        FoodRecognitionProperties properties = new FoodRecognitionProperties();
+        properties.setMinimumConfidence(new BigDecimal("0.60"));
         processor = new MealRecognitionProcessor(
                 recognitionClient,
                 foodMatchingService,
                 imageStorage,
                 mealRepository,
-                analysisRunRepository
+                analysisRunRepository,
+                properties
         );
         user = User.builder().userId("user-id").accessKeyHash("hash").build();
     }
@@ -119,6 +129,86 @@ class MealRecognitionProcessorTest {
     }
 
     @Test
+    void failsWhenAllCandidatesAreBelowMinimumConfidence() {
+        Meal meal = Meal.createText(user, "모호한 음식", LocalDateTime.now());
+        AiAnalysisRun run = AiAnalysisRun.pending(meal, AnalysisRunType.INITIAL, "fingerprint");
+        persisted(meal, run);
+        when(recognitionClient.recognize(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(response(
+                        new FoodRecognitionCandidate("죽", new BigDecimal("0.59")),
+                        new FoodRecognitionCandidate("수프", new BigDecimal("0.40"))
+                ));
+        when(foodMatchingService.matchByName("죽")).thenReturn(Optional.empty());
+        when(foodMatchingService.matchByName("수프")).thenReturn(Optional.empty());
+
+        processor.process(meal.getMealId(), run.getAnalysisRunId());
+
+        assertThat(meal.getStatus()).isEqualTo(MealStatus.FAILED);
+        assertThat(run.getStatus()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(run.getErrorCode())
+                .isEqualTo(RecognitionFailureReason.LOW_CONFIDENCE.getErrorCode());
+        assertThat(run.getNormalizedResponse().getFoods()).hasSize(2);
+        assertThat(run.getProvider()).isEqualTo("FAKE");
+    }
+
+    @Test
+    void acceptsCandidateAtMinimumConfidenceBoundary() {
+        Meal meal = Meal.createText(user, "죽", LocalDateTime.now());
+        AiAnalysisRun run = AiAnalysisRun.pending(meal, AnalysisRunType.INITIAL, "fingerprint");
+        persisted(meal, run);
+        when(recognitionClient.recognize(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(response(new FoodRecognitionCandidate(
+                        "죽",
+                        new BigDecimal("0.60")
+                )));
+        when(foodMatchingService.matchByName("죽")).thenReturn(Optional.empty());
+
+        processor.process(meal.getMealId(), run.getAnalysisRunId());
+
+        assertThat(meal.getStatus()).isEqualTo(MealStatus.REVIEW_REQUIRED);
+        assertThat(run.getStatus()).isEqualTo(AnalysisStatus.SUCCEEDED);
+    }
+
+    @Test
+    void keepsLowConfidenceCandidateWhenAnotherCandidatePassesThreshold() {
+        Meal meal = Meal.createText(user, "밥과 모호한 반찬", LocalDateTime.now());
+        AiAnalysisRun run = AiAnalysisRun.pending(meal, AnalysisRunType.INITIAL, "fingerprint");
+        persisted(meal, run);
+        when(recognitionClient.recognize(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(response(
+                        new FoodRecognitionCandidate("밥", new BigDecimal("0.90")),
+                        new FoodRecognitionCandidate("나물", new BigDecimal("0.30"))
+                ));
+        when(foodMatchingService.matchByName("밥")).thenReturn(Optional.empty());
+        when(foodMatchingService.matchByName("나물")).thenReturn(Optional.empty());
+
+        processor.process(meal.getMealId(), run.getAnalysisRunId());
+
+        assertThat(meal.getStatus()).isEqualTo(MealStatus.REVIEW_REQUIRED);
+        assertThat(run.getNormalizedResponse().getFoods())
+                .extracting("foodName")
+                .containsExactly("밥", "나물");
+    }
+
+    @Test
+    void failsAsNoFoodWithoutMatchingCandidates() {
+        Meal meal = Meal.createText(user, "음식이 아닌 입력", LocalDateTime.now());
+        AiAnalysisRun run = AiAnalysisRun.pending(meal, AnalysisRunType.INITIAL, "fingerprint");
+        persisted(meal, run);
+        when(recognitionClient.recognize(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(noFoodResponse());
+
+        processor.process(meal.getMealId(), run.getAnalysisRunId());
+
+        assertThat(meal.getStatus()).isEqualTo(MealStatus.FAILED);
+        assertThat(run.getStatus()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(run.getErrorCode())
+                .isEqualTo(RecognitionFailureReason.NO_FOOD.getErrorCode());
+        assertThat(run.getNormalizedResponse().getFoods()).isEmpty();
+        verify(foodMatchingService, never()).matchByName(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
     void marksMealAndRunFailedWhenClientFails() {
         Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
         AiAnalysisRun run = AiAnalysisRun.pending(meal, AnalysisRunType.INITIAL, "fingerprint");
@@ -133,12 +223,42 @@ class MealRecognitionProcessorTest {
         assertThat(run.getErrorCode()).isEqualTo("AI_UNAVAILABLE");
     }
 
+    @Test
+    void marksInvalidProviderResponseWithStableFailureCode() {
+        Meal meal = Meal.createText(user, "두부", LocalDateTime.now());
+        AiAnalysisRun run = AiAnalysisRun.pending(meal, AnalysisRunType.INITIAL, "fingerprint");
+        persisted(meal, run);
+        when(recognitionClient.recognize(org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new BaseException(ErrorResponseCode.AI_BAD_RESPONSE));
+
+        processor.process(meal.getMealId(), run.getAnalysisRunId());
+
+        assertThat(meal.getStatus()).isEqualTo(MealStatus.FAILED);
+        assertThat(run.getStatus()).isEqualTo(AnalysisStatus.FAILED);
+        assertThat(run.getErrorCode())
+                .isEqualTo(RecognitionFailureReason.INVALID_RESPONSE.getErrorCode());
+    }
+
     private FoodRecognitionResponse response(FoodRecognitionCandidate... candidates) {
         return new FoodRecognitionResponse(
+                FoodRecognitionResultType.FOOD,
                 List.of(candidates),
                 "FAKE",
                 "fake-v1",
                 "prompt-v1",
+                "response-id",
+                null,
+                null
+        );
+    }
+
+    private FoodRecognitionResponse noFoodResponse() {
+        return new FoodRecognitionResponse(
+                FoodRecognitionResultType.NO_FOOD,
+                List.of(),
+                "FAKE",
+                "fake-v1",
+                "prompt-v2",
                 "response-id",
                 null,
                 null

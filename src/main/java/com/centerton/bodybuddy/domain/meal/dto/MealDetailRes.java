@@ -14,6 +14,7 @@ public class MealDetailRes {
     private String mealId;
     private MealStatus status;
     private OffsetDateTime eatenAt;
+    private RecognitionFailureRes recognitionFailure;
     private List<RecognizedItemRes> recognizedItems;
     private List<MealItemRes> items;
     private NutritionSummaryRes nutritionSummary;

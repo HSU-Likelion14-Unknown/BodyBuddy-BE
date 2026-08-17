@@ -7,6 +7,7 @@ import com.centerton.bodybuddy.domain.analysis.entity.AiAnalysisRun;
 import com.centerton.bodybuddy.domain.analysis.entity.AnalysisRunType;
 import com.centerton.bodybuddy.domain.analysis.entity.AnalysisStatus;
 import com.centerton.bodybuddy.domain.analysis.entity.RecognitionResult;
+import com.centerton.bodybuddy.domain.analysis.entity.RecognitionFailureReason;
 import com.centerton.bodybuddy.domain.analysis.entity.RecognizedFood;
 import com.centerton.bodybuddy.domain.analysis.repository.AiAnalysisRunRepository;
 import com.centerton.bodybuddy.domain.analysis.service.MealRecognitionRequestedEvent;
@@ -657,6 +658,45 @@ class MealServiceTest {
         );
 
         assertThat(result.getRecommendation()).isSameAs(recommendation);
+    }
+
+    @Test
+    void includesFriendlyRecognitionFailureInFailedMealDetail() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "모호한 음식", LocalDateTime.now());
+        meal.markFailed();
+        AiAnalysisRun run = AiAnalysisRun.pending(
+                meal,
+                AnalysisRunType.INITIAL,
+                "fingerprint"
+        );
+        run.markRunning();
+        run.fail(
+                RecognitionFailureReason.LOW_CONFIDENCE.getErrorCode(),
+                "provider detail that must not be exposed",
+                10
+        );
+        when(mealRepository.findByMealIdAndUserUserId(meal.getMealId(), "user-id"))
+                .thenReturn(Optional.of(meal));
+        when(analysisRunRepository.findFirstByMealMealIdAndStatusOrderByFinishedAtDesc(
+                meal.getMealId(), AnalysisStatus.SUCCEEDED)).thenReturn(Optional.empty());
+        when(analysisRunRepository.findFirstByMealMealIdOrderByStartedAtDesc(meal.getMealId()))
+                .thenReturn(Optional.of(run));
+        when(mealItemRepository.findAllByMealMealIdOrderBySortOrderAsc(meal.getMealId()))
+                .thenReturn(List.of());
+        when(nutritionSummaryRepository.findById(meal.getMealId()))
+                .thenReturn(Optional.empty());
+
+        MealDetailRes result = mealService.getMeal(
+                "Bearer raw-access-key",
+                meal.getMealId()
+        );
+
+        assertThat(result.getRecognitionFailure().getReason())
+                .isEqualTo(RecognitionFailureReason.LOW_CONFIDENCE);
+        assertThat(result.getRecognitionFailure().getMessage())
+                .isEqualTo(RecognitionFailureReason.LOW_CONFIDENCE.getMessage())
+                .doesNotContain("provider detail");
     }
 
     private void authenticate(User authenticatedUser) {
