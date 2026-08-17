@@ -56,7 +56,7 @@ public class CalendarService {
                 .map(s -> DailyMealsRes.MealInfo.builder()
                         .mealId(s.getMealId())
                         .directInputText(s.getMeal().getDirectInputText())
-                        .photoUrl(s.getMeal().getPhotoObjectKey())
+                        .photoUrl("/api/v1/meals/images/" + s.getMeal().getPhotoObjectKey())
                         .eatenAt(s.getMeal().getEatenAt())
                         .calories(s.getNutrition().getCaloriesKcal())
                         .carbohydrate(s.getNutrition().getCarbohydrateG())
