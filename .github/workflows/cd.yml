@@ -1,0 +1,72 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI with Gradle"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ${{ secrets.DOCKER_USERNAME }}/bodybuddy-be
+
+jobs:
+  deploy:
+    name: Deploy to Server
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # SSH로 가비아 서버에 접속해 배포
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+
+            APP_HOME=/home/${{ secrets.SERVER_USER }}
+            UPLOAD_DIRECTORY="$APP_HOME/bodybuddy/uploads"
+
+            echo "${{ secrets.ENV_FILE }}" > "$APP_HOME/.env"
+
+            echo "[1/4] Pull latest Docker image..."
+            docker pull ${{ env.IMAGE }}:latest
+
+            # 컨테이너가 재생성되어도 식사 사진이 유지되도록
+            # 서버에 업로드 디렉터리를 생성한다.
+            echo "[2/4] Ensure upload directory..."
+            mkdir -p "$UPLOAD_DIRECTORY"
+
+            # 기존 컨테이너 내부에만 저장된 사진이 있다면
+            # 최초 배포 전 서버 디렉터리로 복사한다.
+            echo "[3/4] Restart container..."
+            if [ -n "$(docker ps -aq -f name=^bodybuddy-be$)" ] \
+               && [ -z "$(ls -A "$UPLOAD_DIRECTORY" 2>/dev/null)" ]; then
+              docker cp \
+                bodybuddy-be:/app/uploads/. \
+                "$UPLOAD_DIRECTORY/" 2>/dev/null || true
+            fi
+
+            docker stop bodybuddy-be || true
+            docker rm bodybuddy-be || true
+
+            docker run -d \
+              --name bodybuddy-be \
+              --env-file "$APP_HOME/.env" \
+              -e UPLOAD_PATH=/app/uploads \
+              -v "$UPLOAD_DIRECTORY:/app/uploads" \
+              --restart unless-stopped \
+              -p 8080:8080 \
+              ${{ env.IMAGE }}:latest
+
+            echo "[4/4] Cleanup unused images..."
+            docker image prune -f
