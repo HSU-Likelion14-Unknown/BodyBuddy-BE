@@ -34,4 +34,14 @@ public interface MealRepository extends JpaRepository<Meal, String> {
     Optional<Meal> findByIdForReactionUpdate(
             @Param("mealId") String mealId
     );
+
+    @Query("""
+        select meal
+        from Meal meal
+        join fetch meal.user
+        where meal.mealId = :mealId
+        """)
+    Optional<Meal> findByIdWithUser(
+            @Param("mealId") String mealId
+    );
 }
