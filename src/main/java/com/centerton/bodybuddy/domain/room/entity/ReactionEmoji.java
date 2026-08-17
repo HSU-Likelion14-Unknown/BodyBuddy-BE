@@ -1,0 +1,30 @@
+package com.centerton.bodybuddy.domain.room.entity;
+
+public enum ReactionEmoji {
+    FIRE,
+    HEART,
+    HEART_EYES,
+    LIKE,
+    THUMBS_UP,
+    THUMBS_DOWN,
+    CLAP,
+    PARTY,
+    STAR,
+    HUNDRED,
+    YUMMY,
+    DELICIOUS,
+    HUNGRY,
+    HEALTHY,
+    STRONG,
+    CHEER,
+    GOOD,
+    AMAZING,
+    WOW,
+    HAHA,
+    SMILE,
+    LAUGH,
+    CUTE,
+    SURPRISED,
+    SAD,
+    ANGRY
+}
