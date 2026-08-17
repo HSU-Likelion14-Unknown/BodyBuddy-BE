@@ -42,6 +42,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -56,6 +59,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -69,6 +74,7 @@ class MealServiceTest {
     @Mock private AiAnalysisRunRepository analysisRunRepository;
     @Mock private FoodMatchingService foodMatchingService;
     @Mock private FoodNutritionEstimationClient nutritionEstimationClient;
+    @Mock private TransactionOperations transactionOperations;
     @Mock private IdempotencyKeyRepository idempotencyKeyRepository;
     @Mock private MealImageStorage imageStorage;
     @Mock private ApplicationEventPublisher eventPublisher;
@@ -87,11 +93,16 @@ class MealServiceTest {
                 analysisRunRepository,
                 foodMatchingService,
                 nutritionEstimationClient,
+                transactionOperations,
                 idempotencyKeyRepository,
                 imageStorage,
                 eventPublisher,
                 recommendationQueryService
         );
+        lenient().when(transactionOperations.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(new SimpleTransactionStatus());
+        });
         user = User.builder()
                 .userId("user-id")
                 .accessKeyHash("access-key-hash")
@@ -595,6 +606,9 @@ class MealServiceTest {
         assertThat(inputCaptor.getValue().foodName()).isEqualTo("짜장면");
         assertThat(inputCaptor.getValue().consumedAmount()).isEqualByComparingTo("1.5");
         assertThat(inputCaptor.getValue().consumedUnit()).isEqualTo("그릇");
+        var order = inOrder(nutritionEstimationClient, transactionOperations);
+        order.verify(nutritionEstimationClient).estimate(any(FoodNutritionEstimationInput.class));
+        order.verify(transactionOperations).execute(any());
     }
 
     @Test

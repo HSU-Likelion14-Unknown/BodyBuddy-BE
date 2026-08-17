@@ -32,6 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
@@ -60,6 +61,7 @@ public class MealService {
     private final AiAnalysisRunRepository analysisRunRepository;
     private final FoodMatchingService foodMatchingService;
     private final FoodNutritionEstimationClient nutritionEstimationClient;
+    private final TransactionOperations transactionOperations;
     private final IdempotencyKeyRepository idempotencyKeyRepository;
     private final MealImageStorage imageStorage;
     private final ApplicationEventPublisher eventPublisher;
@@ -278,29 +280,40 @@ public class MealService {
                 .build();
     }
 
-    @Transactional
     public MealConfirmRes confirmMeal(String authorization, String mealId, MealConfirmReq request) {
         User user = authenticatedUser(authorization);
-        Meal meal = activeMeal(mealId, user.getUserId());
-        if (meal.getStatus() != MealStatus.REVIEW_REQUIRED) {
-            throw new BaseException(ErrorResponseCode.INVALID_MEAL_STATUS);
-        }
+        requireMealStatus(mealId, user.getUserId(), MealStatus.REVIEW_REQUIRED,
+                ErrorResponseCode.INVALID_MEAL_STATUS);
 
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-        MealItemCalculation calculation = replaceMealItems(mealId, meal, request.getItems(), now);
-
-        meal.updateEatenAt(request.getEatenAt()
+        List<PreparedMealItem> preparedItems = prepareMealItems(request.getItems());
+        LocalDateTime eatenAtUtc = request.getEatenAt()
                 .withOffsetSameInstant(ZoneOffset.UTC)
-                .toLocalDateTime());
-        LocalDateTime confirmedAt = now;
-        meal.confirm(confirmedAt);
+                .toLocalDateTime();
+        MealWriteResult result = Objects.requireNonNull(transactionOperations.execute(status -> {
+            Meal meal = requireMealStatus(
+                    mealId,
+                    user.getUserId(),
+                    MealStatus.REVIEW_REQUIRED,
+                    ErrorResponseCode.INVALID_MEAL_STATUS
+            );
+            LocalDateTime confirmedAt = LocalDateTime.now(ZoneOffset.UTC);
+            MealItemCalculation calculation = replaceMealItems(
+                    mealId,
+                    meal,
+                    preparedItems,
+                    confirmedAt
+            );
+            meal.updateEatenAt(eatenAtUtc);
+            meal.confirm(confirmedAt);
+            return new MealWriteResult(meal, calculation);
+        }));
 
         return MealConfirmRes.builder()
-                .mealId(meal.getMealId())
-                .status(meal.getStatus())
-                .items(calculation.items().stream().map(MealItemRes::from).toList())
-                .nutritionSummaryStatus(summaryStatus(calculation.items()))
-                .nutritionSummary(NutritionSummaryRes.from(calculation.summary()))
+                .mealId(result.meal().getMealId())
+                .status(result.meal().getStatus())
+                .items(result.calculation().items().stream().map(MealItemRes::from).toList())
+                .nutritionSummaryStatus(summaryStatus(result.calculation().items()))
+                .nutritionSummary(NutritionSummaryRes.from(result.calculation().summary()))
                 .build();
     }
 
@@ -322,28 +335,37 @@ public class MealService {
                 .build();
     }
 
-    @Transactional
     public MealItemsUpdateRes updateMealItems(String authorization, String mealId,
                                                MealItemsUpdateReq request) {
         User user = authenticatedUser(authorization);
-        Meal meal = activeMeal(mealId, user.getUserId());
-        if (meal.getStatus() != MealStatus.CONFIRMED) {
-            throw new BaseException(ErrorResponseCode.MEAL_ITEMS_INVALID);
-        }
+        requireMealStatus(mealId, user.getUserId(), MealStatus.CONFIRMED,
+                ErrorResponseCode.MEAL_ITEMS_INVALID);
 
-        MealItemCalculation calculation = replaceMealItems(
-                mealId,
-                meal,
-                request.getItems(),
-                LocalDateTime.now(ZoneOffset.UTC)
-        );
+        List<PreparedMealItem> preparedItems = prepareMealItems(request.getItems());
+        MealWriteResult result = Objects.requireNonNull(transactionOperations.execute(status -> {
+            Meal meal = requireMealStatus(
+                    mealId,
+                    user.getUserId(),
+                    MealStatus.CONFIRMED,
+                    ErrorResponseCode.MEAL_ITEMS_INVALID
+            );
+            return new MealWriteResult(
+                    meal,
+                    replaceMealItems(
+                            mealId,
+                            meal,
+                            preparedItems,
+                            LocalDateTime.now(ZoneOffset.UTC)
+                    )
+            );
+        }));
 
         return MealItemsUpdateRes.builder()
-                .mealId(meal.getMealId())
-                .status(meal.getStatus())
-                .items(calculation.items().stream().map(MealItemRes::from).toList())
-                .nutritionSummaryStatus(summaryStatus(calculation.items()))
-                .nutritionSummary(NutritionSummaryRes.from(calculation.summary()))
+                .mealId(result.meal().getMealId())
+                .status(result.meal().getStatus())
+                .items(result.calculation().items().stream().map(MealItemRes::from).toList())
+                .nutritionSummaryStatus(summaryStatus(result.calculation().items()))
+                .nutritionSummary(NutritionSummaryRes.from(result.calculation().summary()))
                 .build();
     }
 
@@ -373,16 +395,31 @@ public class MealService {
                 .orElseThrow(() -> new BaseException(ErrorResponseCode.MEAL_NOT_FOUND));
     }
 
-    private List<MealItem> createConfirmedItems(Meal meal, List<MealItemInputReq> requests) {
-        return java.util.stream.IntStream.range(0, requests.size())
-                .mapToObj(index -> createConfirmedItem(meal, requests.get(index), index))
+    private Meal requireMealStatus(String mealId, String userId, MealStatus requiredStatus,
+                                   ErrorResponseCode errorCode) {
+        Meal meal = activeMeal(mealId, userId);
+        if (meal.getStatus() != requiredStatus) {
+            throw new BaseException(errorCode);
+        }
+        return meal;
+    }
+
+    private List<PreparedMealItem> prepareMealItems(List<MealItemInputReq> requests) {
+        return requests.stream()
+                .map(this::prepareMealItem)
+                .toList();
+    }
+
+    private List<MealItem> createConfirmedItems(Meal meal, List<PreparedMealItem> preparedItems) {
+        return java.util.stream.IntStream.range(0, preparedItems.size())
+                .mapToObj(index -> createConfirmedItem(meal, preparedItems.get(index), index))
                 .toList();
     }
 
     private MealItemCalculation replaceMealItems(String mealId, Meal meal,
-                                                  List<MealItemInputReq> requests,
+                                                  List<PreparedMealItem> preparedItems,
                                                   LocalDateTime calculatedAt) {
-        List<MealItem> items = createConfirmedItems(meal, requests);
+        List<MealItem> items = createConfirmedItems(meal, preparedItems);
         NutritionValues totalNutrition = sumNutrition(items);
 
         mealItemRepository.deleteAllByMealMealId(mealId);
@@ -404,21 +441,31 @@ public class MealService {
         return new MealItemCalculation(savedItems, summary);
     }
 
-    private MealItem createConfirmedItem(Meal meal, MealItemInputReq request, int sortOrder) {
+    private PreparedMealItem prepareMealItem(MealItemInputReq request) {
         String requestedFoodId = trimToNull(request.getFoodId());
         FoodCatalogMatch catalogMatch = resolveCatalogMatch(requestedFoodId, request.getFoodName());
         NutritionSnapshot nutritionSnapshot = resolveNutrition(catalogMatch, request);
 
+        return new PreparedMealItem(
+                catalogMatch == null ? null : catalogMatch.food().getFoodId(),
+                request.getFoodName().trim(),
+                request.getAmount(),
+                request.getUnit().trim(),
+                requestedFoodId == null ? MealItemSource.USER_ADDED : MealItemSource.USER_EDITED,
+                nutritionSnapshot
+        );
+    }
+
+    private MealItem createConfirmedItem(Meal meal, PreparedMealItem preparedItem, int sortOrder) {
+        NutritionSnapshot nutritionSnapshot = preparedItem.nutritionSnapshot();
         return MealItem.builder()
                 .mealItemId(UUID.randomUUID().toString())
                 .meal(meal)
-                .foodId(catalogMatch == null ? null : catalogMatch.food().getFoodId())
-                .foodName(request.getFoodName().trim())
-                .amount(request.getAmount())
-                .amountUnit(request.getUnit().trim())
-                .source(requestedFoodId == null
-                        ? MealItemSource.USER_ADDED
-                        : MealItemSource.USER_EDITED)
+                .foodId(preparedItem.foodId())
+                .foodName(preparedItem.foodName())
+                .amount(preparedItem.amount())
+                .amountUnit(preparedItem.amountUnit())
+                .source(preparedItem.source())
                 .sortOrder(sortOrder)
                 .nutrition(nutritionSnapshot.nutrition())
                 .nutritionBasis(nutritionSnapshot.basis())
@@ -580,6 +627,22 @@ public class MealService {
     private record MealItemCalculation(
             List<MealItem> items,
             MealNutritionSummary summary
+    ) {
+    }
+
+    private record MealWriteResult(
+            Meal meal,
+            MealItemCalculation calculation
+    ) {
+    }
+
+    private record PreparedMealItem(
+            String foodId,
+            String foodName,
+            BigDecimal amount,
+            String amountUnit,
+            MealItemSource source,
+            NutritionSnapshot nutritionSnapshot
     ) {
     }
 
