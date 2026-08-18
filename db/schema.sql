@@ -385,6 +385,7 @@ CREATE TABLE recommendation_ingredients (
     reason VARCHAR(500) NOT NULL,
     nutrition_snapshot JSON NULL,
     created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (ingredient_id),
     UNIQUE KEY uk_recommendation_ingredients_rank (recommendation_id, rank_order),
     UNIQUE KEY uk_recommendation_ingredients_parent (recommendation_id, ingredient_id),
