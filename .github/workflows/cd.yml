@@ -11,6 +11,7 @@ permissions:
 
 env:
   IMAGE: ${{ secrets.DOCKER_USERNAME }}/bodybuddy-be
+  DOCKER_NETWORK: bodybuddy-net
 
 jobs:
   deploy:
@@ -38,17 +39,22 @@ jobs:
 
             echo "${{ secrets.ENV_FILE }}" > "$APP_HOME/.env"
 
-            echo "[1/4] Pull latest Docker image..."
+            echo "[1/5] Pull latest Docker image..."
             docker pull ${{ env.IMAGE }}:latest
+
+            # MySQL 컨테이너와 애플리케이션 컨테이너가
+            # 서로 컨테이너 이름으로 통신할 수 있도록 네트워크를 보장한다.
+            echo "[2/5] Ensure Docker network..."
+            docker network create ${{ env.DOCKER_NETWORK }} || true
 
             # 컨테이너가 재생성되어도 식사 사진이 유지되도록
             # 서버에 업로드 디렉터리를 생성한다.
-            echo "[2/4] Ensure upload directory..."
+            echo "[3/5] Ensure upload directory..."
             mkdir -p "$UPLOAD_DIRECTORY"
 
             # 기존 컨테이너 내부에만 저장된 사진이 있다면
             # 최초 배포 전 서버 디렉터리로 복사한다.
-            echo "[3/4] Restart container..."
+            echo "[4/5] Restart container..."
             if [ -n "$(docker ps -aq -f name=^bodybuddy-be$)" ] \
                && [ -z "$(ls -A "$UPLOAD_DIRECTORY" 2>/dev/null)" ]; then
               docker cp \
@@ -61,12 +67,13 @@ jobs:
 
             docker run -d \
               --name bodybuddy-be \
+              --network ${{ env.DOCKER_NETWORK }} \
               --env-file "$APP_HOME/.env" \
               -e UPLOAD_PATH=/app/uploads \
-              -v "$UPLOAD_DIRECTORY:/app/uploads" \
+              -v "$UPLOAD_DIRECTORY:/app/uploads:Z" \
               --restart unless-stopped \
-              -p 8080:8080 \
+              -p 127.0.0.1:8080:8080 \
               ${{ env.IMAGE }}:latest
 
-            echo "[4/4] Cleanup unused images..."
+            echo "[5/5] Cleanup unused images..."
             docker image prune -f
