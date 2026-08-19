@@ -23,6 +23,9 @@ public class RecommendationPolicyProperties {
     @Max(3)
     private int ingredientCount = 2;
 
+    @Min(1)
+    private int maxRefreshCount = 3;
+
     @DecimalMin("0.0")
     @DecimalMax("100.0")
     private BigDecimal minimumTargetCoveragePercent = new BigDecimal("20.0");

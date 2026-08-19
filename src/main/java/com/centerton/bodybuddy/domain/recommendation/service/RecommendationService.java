@@ -151,6 +151,10 @@ public class RecommendationService {
             throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_CONFLICT);
         }
 
+        if (recommendation.getRefreshCount() >= recommendationProperties.getMaxRefreshCount()) {
+            throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_EXHAUSTED);
+        }
+
         List<RecommendationIngredient> currentIngredients = ingredientRepository
                 .findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
                         recommendationId
