@@ -10,7 +10,6 @@ import com.centerton.bodybuddy.domain.recommendation.dto.RecommendationRes;
 import com.centerton.bodybuddy.domain.recommendation.entity.Recommendation;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationDish;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationIngredient;
-import com.centerton.bodybuddy.domain.recommendation.model.KdrReferenceValues;
 import com.centerton.bodybuddy.domain.recommendation.model.TargetNutrient;
 import com.centerton.bodybuddy.domain.recommendation.repository.RecommendationDishRepository;
 import com.centerton.bodybuddy.domain.recommendation.repository.RecommendationIngredientRepository;
@@ -36,7 +35,6 @@ public class RecommendationResponseAssembler {
 
     private final RecommendationIngredientRepository ingredientRepository;
     private final RecommendationDishRepository dishRepository;
-    private final KdrReferenceProvider kdrReferenceProvider;
 
     public RecommendationRes assemble(Recommendation recommendation) {
         List<RecommendationIngredient> ingredients = ingredientRepository
@@ -49,13 +47,6 @@ public class RecommendationResponseAssembler {
                         dish.getIngredient().getIngredientId(),
                         ignored -> new ArrayList<>()
                 ).add(dish));
-        KdrReferenceValues reference = ingredients.isEmpty()
-                ? null
-                : kdrReferenceProvider.referenceFor(
-                        recommendation.getUser(),
-                        recommendation.getRecommendationDate()
-                );
-
         return RecommendationRes.builder()
                 .recommendationId(recommendation.getRecommendationId())
                 .status(recommendation.getStatus())
@@ -68,7 +59,7 @@ public class RecommendationResponseAssembler {
                                         ingredient.getIngredientId(),
                                         List.of()
                                 ),
-                                reference
+                                recommendation.getNutrientGap()
                         ))
                         .toList())
                 .dailyNutrition(NutritionRes.from(recommendation.getDailyNutrition()))
@@ -79,7 +70,7 @@ public class RecommendationResponseAssembler {
     private RecommendationIngredientRes ingredientResponse(
             RecommendationIngredient ingredient,
             List<RecommendationDish> dishes,
-            KdrReferenceValues reference
+            NutritionValues nutrientGap
     ) {
         return RecommendationIngredientRes.builder()
                 .ingredientId(ingredient.getIngredientId())
@@ -88,7 +79,7 @@ public class RecommendationResponseAssembler {
                 .reason(ingredient.getReason())
                 .nutrientCoverages(nutrientCoverages(
                         ingredient.getNutritionSnapshot(),
-                        reference
+                        nutrientGap
                 ))
                 .dishes(dishes.stream().map(this::dishResponse).toList())
                 .build();
@@ -96,14 +87,14 @@ public class RecommendationResponseAssembler {
 
     private List<NutrientCoverageRes> nutrientCoverages(
             NutritionValues ingredientNutrition,
-            KdrReferenceValues reference
+            NutritionValues nutrientGap
     ) {
         return Arrays.stream(TargetNutrient.values())
                 .map(nutrient -> NutrientCoverageRes.builder()
                         .nutrient(nutrient)
                         .coveragePercent(coveragePercent(
                                 nutrient.amountFrom(ingredientNutrition),
-                                reference.amountOf(nutrient)
+                                nutrient.amountFrom(nutrientGap)
                         ))
                         .build())
                 .sorted(Comparator.comparing(

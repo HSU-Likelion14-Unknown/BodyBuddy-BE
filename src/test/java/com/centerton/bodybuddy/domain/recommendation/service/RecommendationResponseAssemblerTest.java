@@ -8,7 +8,6 @@ import com.centerton.bodybuddy.domain.recommendation.entity.Recommendation;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationDish;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationIngredient;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationStatus;
-import com.centerton.bodybuddy.domain.recommendation.model.KdrReferenceValues;
 import com.centerton.bodybuddy.domain.recommendation.model.TargetNutrient;
 import com.centerton.bodybuddy.domain.recommendation.repository.RecommendationDishRepository;
 import com.centerton.bodybuddy.domain.recommendation.repository.RecommendationIngredientRepository;
@@ -32,7 +31,6 @@ class RecommendationResponseAssemblerTest {
 
     @Mock private RecommendationIngredientRepository ingredientRepository;
     @Mock private RecommendationDishRepository dishRepository;
-    @Mock private KdrReferenceProvider kdrReferenceProvider;
     @InjectMocks private RecommendationResponseAssembler assembler;
 
     @Test
@@ -79,8 +77,6 @@ class RecommendationResponseAssemblerTest {
                 recommendation.getRecommendationId())).thenReturn(List.of(ingredient));
         when(dishRepository.findAllForRecommendation(recommendation.getRecommendationId()))
                 .thenReturn(List.of(first, second));
-        when(kdrReferenceProvider.referenceFor(user, LocalDate.of(2026, 8, 16)))
-                .thenReturn(reference());
 
         RecommendationRes result = assembler.assemble(recommendation);
 
@@ -91,9 +87,9 @@ class RecommendationResponseAssemblerTest {
         assertThat(result.getIngredients().get(0).getNutrientCoverages())
                 .extracting("nutrient", "coveragePercent")
                 .startsWith(
-                        org.assertj.core.groups.Tuple.tuple(TargetNutrient.VITAMIN_C, value("80.0")),
                         org.assertj.core.groups.Tuple.tuple(TargetNutrient.PROTEIN, value("72.0")),
-                        org.assertj.core.groups.Tuple.tuple(TargetNutrient.IRON, value("33.8"))
+                        org.assertj.core.groups.Tuple.tuple(TargetNutrient.VITAMIN_C, value("0.0")),
+                        org.assertj.core.groups.Tuple.tuple(TargetNutrient.IRON, value("64.3"))
                 )
                 .hasSize(TargetNutrient.values().length);
         assertThat(result.getIngredients().get(0).getDishes())
@@ -119,15 +115,4 @@ class RecommendationResponseAssemblerTest {
         return new BigDecimal(value);
     }
 
-    private KdrReferenceValues reference() {
-        return new KdrReferenceValues(
-                value("65"),
-                value("30"),
-                value("800"),
-                value("8"),
-                value("3500"),
-                value("800"),
-                value("100")
-        );
-    }
 }
