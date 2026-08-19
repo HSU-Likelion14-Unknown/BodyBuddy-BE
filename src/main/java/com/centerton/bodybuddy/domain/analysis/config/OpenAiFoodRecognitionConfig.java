@@ -12,7 +12,8 @@ import org.springframework.web.client.RestClient;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnExpression("'${bodybuddy.food-recognition.provider:fake}' == 'openai' "
-        + "or '${bodybuddy.food-nutrition-estimation.provider:fake}' == 'openai'")
+        + "or '${bodybuddy.food-nutrition-estimation.provider:fake}' == 'openai' "
+        + "or '${bodybuddy.recommendation.ai-fallback-provider:fake}' == 'openai'")
 @EnableConfigurationProperties(OpenAiProperties.class)
 public class OpenAiFoodRecognitionConfig {
 

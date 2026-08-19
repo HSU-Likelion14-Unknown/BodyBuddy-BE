@@ -12,5 +12,6 @@ public class RecommendationIngredientRes {
     private String foodId;
     private String ingredientName;
     private String reason;
+    private List<NutrientCoverageRes> nutrientCoverages;
     private List<RecommendationDishRes> dishes;
 }

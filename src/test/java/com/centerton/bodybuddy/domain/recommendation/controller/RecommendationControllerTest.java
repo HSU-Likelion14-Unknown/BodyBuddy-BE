@@ -81,4 +81,41 @@ class RecommendationControllerTest {
         assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(result.getBody()).isSameAs(response);
     }
+
+    @Test
+    void respondsOkWhenReadingSavedDecision() {
+        RecommendationDecisionRes response = RecommendationDecisionRes.builder()
+                .recommendationId("recommendation-id")
+                .status(RecommendationStatus.SELECTED)
+                .selectedIngredientId("ingredient-id")
+                .decidedAt(OffsetDateTime.now())
+                .build();
+        when(recommendationService.getDecision("******", "recommendation-id"))
+                .thenReturn(response);
+
+        ResponseEntity<RecommendationDecisionRes> result = controller.getDecision(
+                "******", "recommendation-id"
+        );
+
+        assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(result.getBody()).isSameAs(response);
+    }
+
+    @Test
+    void respondsOkWithRefreshedRecommendation() {
+        RecommendationRes response = RecommendationRes.builder()
+                .recommendationId("recommendation-id")
+                .status(RecommendationStatus.CREATED)
+                .build();
+        when(recommendationService.refresh(
+                "Bearer key", "idempotency-key", "recommendation-id"))
+                .thenReturn(response);
+
+        ResponseEntity<RecommendationRes> result = controller.refresh(
+                "Bearer key", "idempotency-key", "recommendation-id"
+        );
+
+        assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(result.getBody()).isSameAs(response);
+    }
 }

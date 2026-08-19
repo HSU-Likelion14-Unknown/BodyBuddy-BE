@@ -88,7 +88,8 @@ class RecommendationNutritionAnalysisServiceTest {
         when(referenceProvider.referenceFor(user, date)).thenReturn(reference);
         when(dailyNutritionService.sumForDate("user-id", date)).thenReturn(dailyNutrition);
         when(gapCalculator.calculate(reference, dailyNutrition)).thenReturn(gap);
-        when(ingredientRankingService.rankMappable(user, gap, foodIds))
+        when(ingredientRankingService.rankMappable(
+                user, gap, foodIds, List.of(), BigDecimal.ZERO))
                 .thenReturn(List.of());
 
         RecommendationNutritionAnalysis result = analysisService.analyzeMappable(
@@ -99,7 +100,8 @@ class RecommendationNutritionAnalysisServiceTest {
 
         assertThat(result.nutritionGap()).isSameAs(gap);
         assertThat(result.ingredients()).isEmpty();
-        verify(ingredientRankingService).rankMappable(user, gap, foodIds);
+        verify(ingredientRankingService).rankMappable(
+                user, gap, foodIds, List.of(), BigDecimal.ZERO);
     }
 
     private BigDecimal value(String value) {

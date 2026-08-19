@@ -2,6 +2,9 @@ package com.centerton.bodybuddy.domain.recommendation.repository;
 
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationIngredient;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,4 +21,11 @@ public interface RecommendationIngredientRepository
             String ingredientId,
             String recommendationId
     );
+
+    @Modifying
+    @Query("""
+            delete from RecommendationIngredient ingredient
+            where ingredient.recommendation.recommendationId = :recommendationId
+            """)
+    int deleteAllForRecommendation(@Param("recommendationId") String recommendationId);
 }
