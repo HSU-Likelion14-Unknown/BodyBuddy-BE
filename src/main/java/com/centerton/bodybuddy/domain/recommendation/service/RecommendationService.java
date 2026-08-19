@@ -248,6 +248,19 @@ public class RecommendationService {
         return decisionResponse(decision);
     }
 
+    @Transactional(readOnly = true)
+    public RecommendationDecisionRes getDecision(String authorization,
+                                                 String recommendationId) {
+        User user = authenticatedUser(authorization);
+        Recommendation recommendation = recommendationRepository
+                .findByRecommendationIdAndUserUserId(recommendationId, user.getUserId())
+                .orElseThrow(() -> new BaseException(ErrorResponseCode.RECOMMENDATION_NOT_FOUND));
+        RecommendationDecision decision = decisionRepository
+                .findById(recommendation.getRecommendationId())
+                .orElseThrow(() -> new BaseException(ErrorResponseCode.RECOMMENDATION_NOT_FOUND));
+        return decisionResponse(decision);
+    }
+
     private Recommendation saveRecommendation(User user, Meal meal, LocalDate date,
                                               RecommendationPlan plan) {
         NutritionGapResult gap = plan.nutritionGap();
