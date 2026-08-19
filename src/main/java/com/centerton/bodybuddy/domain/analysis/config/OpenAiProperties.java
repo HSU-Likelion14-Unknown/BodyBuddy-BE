@@ -40,6 +40,10 @@ public class OpenAiProperties {
     @NotNull
     private FoodNutritionEstimation foodNutritionEstimation = new FoodNutritionEstimation();
 
+    @Valid
+    @NotNull
+    private IngredientRecommendation ingredientRecommendation = new IngredientRecommendation();
+
     @Getter
     @Setter
     public static class FoodRecognition {
@@ -71,5 +75,20 @@ public class OpenAiProperties {
         @Min(1)
         @Max(4096)
         private int maxOutputTokens = 500;
+    }
+
+    @Getter
+    @Setter
+    public static class IngredientRecommendation {
+
+        @NotBlank
+        private String model = "gpt-5-mini-2025-08-07";
+
+        @NotBlank
+        private String promptVersion = "ingredient-recommendation-v1";
+
+        @Min(1)
+        @Max(4096)
+        private int maxOutputTokens = 1800;
     }
 }

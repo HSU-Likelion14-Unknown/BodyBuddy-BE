@@ -103,6 +103,23 @@ FOOD_NUTRITION_ESTIMATION_PROVIDER=openai
 OPENAI_FOOD_NUTRITION_MODEL=gpt-5-mini-2025-08-07
 ```
 
+다음 식사 원재료 추천은 한 번에 정확히 2개를 반환합니다. DB 후보는 대표 부족 영양소의
+하루 권장량을 기본 20% 이상 채우는 경우만 사용하며, 2개를 채우지 못하면 OpenAI 후보를
+생성한 뒤 같은 충족률·알레르기·비선호 검증을 다시 적용합니다. 추천 새로고침은 이전에
+노출된 모든 원재료 이름을 누적 제외합니다.
+
+```text
+RECOMMENDATION_INGREDIENT_COUNT=2
+RECOMMENDATION_MIN_TARGET_COVERAGE_PERCENT=20.0
+RECOMMENDATION_AI_FALLBACK_PROVIDER=openai
+OPENAI_INGREDIENT_RECOMMENDATION_MODEL=gpt-5-mini-2025-08-07
+```
+
+`RECOMMENDATION_AI_FALLBACK_PROVIDER`를 생략하면 `FOOD_RECOGNITION_PROVIDER` 값을
+따릅니다. DB와 OpenAI 후보를 합쳐도 안전한 원재료 2개를 확보하지 못하면 생성 시
+`NO_CANDIDATE`, 새로고침 시 `RECOMMENDATION_REFRESH_EXHAUSTED` 오류를 반환하며 기존
+추천은 유지합니다.
+
 API 키는 저장소 파일에 작성하거나 커밋하지 않습니다.
 
 ## 프론트엔드 연동 가이드

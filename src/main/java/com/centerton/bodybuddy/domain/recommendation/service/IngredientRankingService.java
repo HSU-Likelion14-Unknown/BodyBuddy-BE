@@ -44,7 +44,9 @@ public class IngredientRankingService {
                 user,
                 gapResult,
                 limit,
-                foodNutritionRepository.findRecommendationCandidates()
+                foodNutritionRepository.findRecommendationCandidates(),
+                List.of(),
+                BigDecimal.ZERO
         );
     }
 
@@ -52,6 +54,23 @@ public class IngredientRankingService {
     public List<RankedIngredient> rankMappable(User user,
                                               NutritionGapResult gapResult,
                                               Collection<String> mappableFoodIds) {
+        return rankMappable(
+                user,
+                gapResult,
+                mappableFoodIds,
+                List.of(),
+                BigDecimal.ZERO
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<RankedIngredient> rankMappable(
+            User user,
+            NutritionGapResult gapResult,
+            Collection<String> mappableFoodIds,
+            Collection<String> excludedIngredientNames,
+            BigDecimal minimumTargetCoverageRatio
+    ) {
         if (mappableFoodIds == null || mappableFoodIds.isEmpty()
                 || !canRank(user, gapResult, Integer.MAX_VALUE)) {
             return List.of();
@@ -70,7 +89,14 @@ public class IngredientRankingService {
                     uniqueFoodIds.subList(start, end)
             ));
         }
-        return rankCandidates(user, gapResult, uniqueFoodIds.size(), candidates);
+        return rankCandidates(
+                user,
+                gapResult,
+                uniqueFoodIds.size(),
+                candidates,
+                excludedIngredientNames,
+                minimumTargetCoverageRatio
+        );
     }
 
     private boolean canRank(User user, NutritionGapResult gapResult, int limit) {
@@ -84,8 +110,13 @@ public class IngredientRankingService {
     private List<RankedIngredient> rankCandidates(User user,
                                                   NutritionGapResult gapResult,
                                                   int limit,
-                                                  List<FoodNutrition> candidates) {
+                                                  List<FoodNutrition> candidates,
+                                                  Collection<String> excludedIngredientNames,
+                                                  BigDecimal minimumTargetCoverageRatio) {
         TargetNutrient target = gapResult.target().orElseThrow();
+        BigDecimal minimumCoverage = minimumTargetCoverageRatio == null
+                ? BigDecimal.ZERO
+                : minimumTargetCoverageRatio.max(BigDecimal.ZERO);
         List<CandidateScore> scores = candidates.stream()
                 .filter(this::eligibleCandidate)
                 .filter(candidate -> safetyPolicy.isAllowed(
@@ -95,10 +126,18 @@ public class IngredientRankingService {
                 ))
                 .map(candidate -> score(candidate, target, gapResult))
                 .filter(java.util.Objects::nonNull)
+                .filter(candidate -> candidate.targetCoverage().compareTo(minimumCoverage) >= 0)
                 .sorted(candidateComparator())
                 .toList();
 
         Set<String> usedIngredients = new HashSet<>();
+        if (excludedIngredientNames != null) {
+            excludedIngredientNames.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(FoodNameNormalizer::normalizeLookupName)
+                    .filter(name -> !name.isBlank())
+                    .forEach(usedIngredients::add);
+        }
         List<RankedIngredient> result = new ArrayList<>();
         for (CandidateScore score : scores) {
             String normalizedIngredient = FoodNameNormalizer.normalizeLookupName(

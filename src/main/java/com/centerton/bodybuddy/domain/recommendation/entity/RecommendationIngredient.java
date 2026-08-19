@@ -34,8 +34,8 @@ public class RecommendationIngredient extends BaseEntity {
     @JoinColumn(name = "recommendation_id", nullable = false)
     private Recommendation recommendation;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "food_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "food_id")
     private Food food;
 
     @Column(name = "rank_order", nullable = false)

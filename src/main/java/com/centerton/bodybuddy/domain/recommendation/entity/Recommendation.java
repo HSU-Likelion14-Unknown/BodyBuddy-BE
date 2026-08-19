@@ -24,6 +24,9 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -69,6 +72,15 @@ public class Recommendation extends BaseEntity {
     @Column(name = "nutrient_gap", nullable = false, columnDefinition = "json")
     private NutritionValues nutrientGap;
 
+    @Builder.Default
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "excluded_ingredient_names", nullable = false, columnDefinition = "json")
+    private List<String> excludedIngredientNames = List.of();
+
+    @Builder.Default
+    @Column(name = "refresh_count", nullable = false)
+    private int refreshCount = 0;
+
     public static Recommendation created(User user, Meal meal, LocalDate date,
                                          TargetNutrient targetNutrient,
                                          NutritionValues dailyNutrition,
@@ -104,7 +116,30 @@ public class Recommendation extends BaseEntity {
                 .meal(meal)
                 .recommendationDate(date)
                 .dailyNutrition(dailyNutrition)
-                .nutrientGap(nutrientGap);
+                .nutrientGap(nutrientGap)
+                .excludedIngredientNames(List.of())
+                .refreshCount(0);
+    }
+
+    public void refresh(TargetNutrient targetNutrient,
+                        NutritionValues dailyNutrition,
+                        NutritionValues nutrientGap,
+                        Collection<String> replacedIngredientNames) {
+        LinkedHashSet<String> history = new LinkedHashSet<>(excludedIngredientNames);
+        if (replacedIngredientNames != null) {
+            replacedIngredientNames.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(String::trim)
+                    .filter(name -> !name.isBlank())
+                    .forEach(history::add);
+        }
+        this.targetNutrient = targetNutrient;
+        this.dailyNutrition = dailyNutrition;
+        this.nutrientGap = nutrientGap;
+        this.excludedIngredientNames = List.copyOf(history);
+        this.refreshCount++;
+        this.status = RecommendationStatus.CREATED;
+        this.noRecommendationReason = null;
     }
 
     public void select() {

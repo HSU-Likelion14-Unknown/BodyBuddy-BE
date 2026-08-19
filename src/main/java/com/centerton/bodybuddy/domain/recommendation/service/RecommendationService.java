@@ -10,8 +10,10 @@ import com.centerton.bodybuddy.domain.meal.entity.Meal;
 import com.centerton.bodybuddy.domain.meal.entity.MealStatus;
 import com.centerton.bodybuddy.domain.meal.entity.NutritionValues;
 import com.centerton.bodybuddy.domain.meal.repository.MealRepository;
+import com.centerton.bodybuddy.domain.recommendation.config.RecommendationPolicyProperties;
 import com.centerton.bodybuddy.domain.recommendation.dto.RecommendationDecisionReq;
 import com.centerton.bodybuddy.domain.recommendation.dto.RecommendationDecisionRes;
+import com.centerton.bodybuddy.domain.recommendation.dto.RecommendationRes;
 import com.centerton.bodybuddy.domain.recommendation.entity.NoRecommendationReason;
 import com.centerton.bodybuddy.domain.recommendation.entity.Recommendation;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationDecision;
@@ -51,8 +53,8 @@ import java.util.UUID;
 public class RecommendationService {
 
     private static final String RECOMMENDATION_CREATE = "RECOMMENDATION_CREATE";
+    private static final String RECOMMENDATION_REFRESH = "RECOMMENDATION_REFRESH";
     private static final String RECOMMENDATION_DECISION = "RECOMMENDATION_DECISION";
-    private static final int RECOMMENDED_INGREDIENT_LIMIT = 3;
     private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
 
     private final UserRepository userRepository;
@@ -65,6 +67,7 @@ public class RecommendationService {
     private final IdempotencyKeyRepository idempotencyKeyRepository;
     private final RecommendationPlanningService planningService;
     private final RecommendationResponseAssembler responseAssembler;
+    private final RecommendationPolicyProperties recommendationProperties;
 
     @Transactional
     public RecommendationCreationResult create(String authorization,
@@ -103,7 +106,7 @@ public class RecommendationService {
         RecommendationPlan plan = planningService.plan(
                 user,
                 recommendationDate,
-                RECOMMENDED_INGREDIENT_LIMIT
+                recommendationProperties.getIngredientCount()
         );
         Recommendation recommendation = saveRecommendation(user, meal, recommendationDate, plan);
         completeIdempotencyKey(
@@ -114,6 +117,78 @@ public class RecommendationService {
                 responseAssembler.assemble(recommendation),
                 true
         );
+    }
+
+    @Transactional
+    public RecommendationRes refresh(String authorization,
+                                     String idempotencyKey,
+                                     String recommendationId) {
+        User user = authenticatedUser(authorization);
+        String fingerprint = AccessKeyGenerator.hash(
+                RECOMMENDATION_REFRESH + ":" + recommendationId
+        );
+        RecommendationRes previous = findIdempotentRefresh(
+                idempotencyKey,
+                user,
+                fingerprint
+        );
+        if (previous != null) {
+            return previous;
+        }
+
+        Recommendation recommendation = recommendationRepository
+                .findOwnedByIdForUpdate(recommendationId, user.getUserId())
+                .orElseThrow(() -> new BaseException(ErrorResponseCode.RECOMMENDATION_NOT_FOUND));
+        if (!reserveIdempotencyKey(
+                idempotencyKey,
+                user,
+                RECOMMENDATION_REFRESH,
+                fingerprint
+        )) {
+            return requireIdempotentRefresh(idempotencyKey, user, fingerprint);
+        }
+        if (recommendation.getStatus() != RecommendationStatus.CREATED) {
+            throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_CONFLICT);
+        }
+
+        if (recommendation.getRefreshCount() >= recommendationProperties.getMaxRefreshCount()) {
+            throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_EXHAUSTED);
+        }
+
+        List<RecommendationIngredient> currentIngredients = ingredientRepository
+                .findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
+                        recommendationId
+                );
+        List<String> currentNames = currentIngredients.stream()
+                .map(RecommendationIngredient::getIngredientName)
+                .toList();
+        List<String> exclusions = new java.util.ArrayList<>(
+                recommendation.getExcludedIngredientNames()
+        );
+        exclusions.addAll(currentNames);
+
+        RecommendationPlan plan = planningService.plan(
+                user,
+                recommendation.getRecommendationDate(),
+                recommendationProperties.getIngredientCount(),
+                exclusions
+        );
+        if (plan.ingredients().size() != recommendationProperties.getIngredientCount()) {
+            throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_EXHAUSTED);
+        }
+
+        dishRepository.deleteAllForRecommendation(recommendationId);
+        ingredientRepository.deleteAllForRecommendation(recommendationId);
+        NutritionGapResult gap = plan.nutritionGap();
+        recommendation.refresh(
+                gap.target().orElse(null),
+                gap.dailyNutrition(),
+                gapSnapshot(gap),
+                currentNames
+        );
+        saveIngredients(recommendation, plan.ingredients(), gap.target().orElse(null));
+        completeIdempotencyKey(idempotencyKey, recommendationId);
+        return responseAssembler.assemble(recommendation);
     }
 
     @Transactional
@@ -177,6 +252,19 @@ public class RecommendationService {
         return decisionResponse(decision);
     }
 
+    @Transactional(readOnly = true)
+    public RecommendationDecisionRes getDecision(String authorization,
+                                                 String recommendationId) {
+        User user = authenticatedUser(authorization);
+        Recommendation recommendation = recommendationRepository
+                .findByRecommendationIdAndUserUserId(recommendationId, user.getUserId())
+                .orElseThrow(() -> new BaseException(ErrorResponseCode.RECOMMENDATION_NOT_FOUND));
+        RecommendationDecision decision = decisionRepository
+                .findById(recommendation.getRecommendationId())
+                .orElseThrow(() -> new BaseException(ErrorResponseCode.RECOMMENDATION_NOT_FOUND));
+        return decisionResponse(decision);
+    }
+
     private Recommendation saveRecommendation(User user, Meal meal, LocalDate date,
                                               RecommendationPlan plan) {
         NutritionGapResult gap = plan.nutritionGap();
@@ -216,7 +304,8 @@ public class RecommendationService {
                                  TargetNutrient target) {
         for (int index = 0; index < plannedIngredients.size(); index++) {
             IngredientDishRecommendation planned = plannedIngredients.get(index);
-            Food food = foodRepository.getReferenceById(planned.rankedIngredient().foodId());
+            String foodId = planned.rankedIngredient().foodId();
+            Food food = foodId == null ? null : foodRepository.getReferenceById(foodId);
             RecommendationIngredient ingredient = ingredientRepository.save(
                     RecommendationIngredient.builder()
                             .ingredientId(UUID.randomUUID().toString())
@@ -303,6 +392,37 @@ public class RecommendationService {
             String fingerprint
     ) {
         RecommendationCreationResult result = findIdempotentCreation(key, user, fingerprint);
+        if (result == null) {
+            throw new BaseException(ErrorResponseCode.IDEMPOTENCY_KEY_REUSED);
+        }
+        return result;
+    }
+
+    private RecommendationRes findIdempotentRefresh(
+            String key,
+            User user,
+            String fingerprint
+    ) {
+        IdempotencyKey record = idempotencyKeyRepository.findById(key).orElse(null);
+        if (record == null) {
+            return null;
+        }
+        requireSameIdempotentRequest(record, user, RECOMMENDATION_REFRESH, fingerprint);
+        Recommendation recommendation = recommendationRepository
+                .findByRecommendationIdAndUserUserId(
+                        record.getResourceId(),
+                        user.getUserId()
+                )
+                .orElseThrow(() -> new BaseException(ErrorResponseCode.IDEMPOTENCY_KEY_REUSED));
+        return responseAssembler.assemble(recommendation);
+    }
+
+    private RecommendationRes requireIdempotentRefresh(
+            String key,
+            User user,
+            String fingerprint
+    ) {
+        RecommendationRes result = findIdempotentRefresh(key, user, fingerprint);
         if (result == null) {
             throw new BaseException(ErrorResponseCode.IDEMPOTENCY_KEY_REUSED);
         }
