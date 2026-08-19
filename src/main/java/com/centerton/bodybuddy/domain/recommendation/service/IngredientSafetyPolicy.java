@@ -102,6 +102,7 @@ public class IngredientSafetyPolicy {
         register(result, Set.of("SQUID", "오징어"), "오징어");
         register(result, Set.of("SHELLFISH", "조개류"), "조개", "굴", "전복", "홍합");
         register(result, Set.of("PINE_NUT", "PINENUT", "잣"), "잣");
+        register(result, Set.of("NUTS", "견과류"), "땅콩", "호두", "잣", "아몬드", "캐슈넛", "피스타치오", "헤이즐넛", "브라질너트", "피칸", "마카다미아");
         return Map.copyOf(result);
     }
 
