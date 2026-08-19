@@ -87,9 +87,9 @@ class RecommendationResponseAssemblerTest {
         assertThat(result.getIngredients().get(0).getNutrientCoverages())
                 .extracting("nutrient", "coveragePercent")
                 .startsWith(
+                        org.assertj.core.groups.Tuple.tuple(TargetNutrient.IRON, value("64.3")),
                         org.assertj.core.groups.Tuple.tuple(TargetNutrient.PROTEIN, value("72.0")),
-                        org.assertj.core.groups.Tuple.tuple(TargetNutrient.VITAMIN_C, value("0.0")),
-                        org.assertj.core.groups.Tuple.tuple(TargetNutrient.IRON, value("64.3"))
+                        org.assertj.core.groups.Tuple.tuple(TargetNutrient.VITAMIN_C, value("0.0"))
                 )
                 .hasSize(TargetNutrient.values().length);
         assertThat(result.getIngredients().get(0).getDishes())
