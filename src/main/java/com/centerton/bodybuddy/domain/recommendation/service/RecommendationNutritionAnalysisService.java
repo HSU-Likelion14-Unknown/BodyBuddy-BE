@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -36,11 +37,30 @@ public class RecommendationNutritionAnalysisService {
             LocalDate date,
             Collection<String> mappableFoodIds
     ) {
+        return analyzeMappable(
+                user,
+                date,
+                mappableFoodIds,
+                List.of(),
+                BigDecimal.ZERO
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public RecommendationNutritionAnalysis analyzeMappable(
+            User user,
+            LocalDate date,
+            Collection<String> mappableFoodIds,
+            Collection<String> excludedIngredientNames,
+            BigDecimal minimumTargetCoverageRatio
+    ) {
         NutritionGapResult gap = calculateGap(user, date);
         List<RankedIngredient> ingredients = ingredientRankingService.rankMappable(
                 user,
                 gap,
-                mappableFoodIds
+                mappableFoodIds,
+                excludedIngredientNames,
+                minimumTargetCoverageRatio
         );
         return new RecommendationNutritionAnalysis(gap, ingredients);
     }

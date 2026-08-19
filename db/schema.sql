@@ -358,6 +358,8 @@ CREATE TABLE recommendations (
     no_recommendation_reason VARCHAR(80) NULL,
     daily_nutrition JSON NOT NULL,
     nutrient_gap JSON NOT NULL,
+    excluded_ingredient_names JSON NOT NULL,
+    refresh_count INT UNSIGNED NOT NULL DEFAULT 0,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (recommendation_id),
@@ -377,7 +379,7 @@ CREATE TABLE recommendations (
 CREATE TABLE recommendation_ingredients (
     ingredient_id CHAR(36) NOT NULL,
     recommendation_id CHAR(36) NOT NULL,
-    food_id CHAR(36) NOT NULL,
+    food_id CHAR(36) NULL,
     rank_order INT UNSIGNED NOT NULL,
     ingredient_name VARCHAR(200) NOT NULL,
     reason VARCHAR(500) NOT NULL,

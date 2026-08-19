@@ -166,6 +166,31 @@ class IngredientRankingServiceTest {
         verify(foodNutritionRepository, never()).findRecommendationCandidates();
     }
 
+    @Test
+    void excludesPreviousNamesAndCandidatesBelowMinimumTargetCoverage() {
+        User user = user(List.of(), List.of());
+        List<String> foodIds = List.of("weak", "previous", "valid");
+        when(foodNutritionRepository.findRecommendationCandidatesByFoodIds(foodIds))
+                .thenReturn(List.of(
+                        nutrition("weak", "미나리", "1.59", "100"),
+                        nutrition("previous", "시금치", "4", "100"),
+                        nutrition("valid", "렌틸콩", "1.60", "100")
+                ));
+
+        List<RankedIngredient> result = rankingService.rankMappable(
+                user,
+                ironGap(),
+                foodIds,
+                List.of(" 시금치 "),
+                new BigDecimal("0.20")
+        );
+
+        assertThat(result).extracting(RankedIngredient::ingredientName)
+                .containsExactly("렌틸콩");
+        assertThat(result.getFirst().dailyTargetCoverageRatio())
+                .isEqualByComparingTo("0.20");
+    }
+
     private NutritionGapResult ironGap() {
         KdrReferenceValues reference = reference();
         NutritionValues daily = NutritionValues.builder()

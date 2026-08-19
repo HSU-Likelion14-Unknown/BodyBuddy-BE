@@ -30,11 +30,17 @@ class RecommendationPlanningServiceTest {
     @Mock
     private IngredientDishMappingService dishMappingService;
 
+    @Mock
+    private AiIngredientFallbackService aiFallbackService;
+
+    @Mock
+    private com.centerton.bodybuddy.domain.recommendation.config.RecommendationPolicyProperties properties;
+
     @InjectMocks
     private RecommendationPlanningService planningService;
 
     @Test
-    void ranksOnlyMappableFoodsAndLimitsMappedIngredientsToThree() {
+    void returnsNoCandidatesWhenDbAndAiCannotFillExactlyTwoIngredients() {
         User user = User.builder().userId("user-id").build();
         LocalDate date = LocalDate.of(2026, 8, 16);
         NutritionGapResult gap = gap();
@@ -45,16 +51,18 @@ class RecommendationPlanningServiceTest {
         List<String> mappableFoodIds = List.of("spinach", "broccoli");
         when(dishMappingService.findMappableIngredientFoodIds())
                 .thenReturn(mappableFoodIds);
-        when(nutritionAnalysisService.analyzeMappable(user, date, mappableFoodIds))
+        when(properties.minimumTargetCoverageRatio()).thenReturn(value("0.20"));
+        when(nutritionAnalysisService.analyzeMappable(
+                user, date, mappableFoodIds, List.of(), value("0.20")))
                 .thenReturn(analysis);
-        when(dishMappingService.map(user, List.of(), 3)).thenReturn(List.of());
-
-        RecommendationPlan result = planningService.plan(user, date, 10);
+        when(dishMappingService.map(user, List.of(), 2)).thenReturn(List.of());
+        RecommendationPlan result = planningService.plan(user, date, 2);
 
         assertThat(result.nutritionGap()).isSameAs(gap);
         assertThat(result.ingredients()).isEmpty();
-        verify(nutritionAnalysisService).analyzeMappable(user, date, mappableFoodIds);
-        verify(dishMappingService).map(user, List.of(), 3);
+        verify(nutritionAnalysisService).analyzeMappable(
+                user, date, mappableFoodIds, List.of(), value("0.20"));
+        verify(dishMappingService).map(user, List.of(), 2);
     }
 
     private NutritionGapResult gap() {

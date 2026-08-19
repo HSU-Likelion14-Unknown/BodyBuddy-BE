@@ -55,4 +55,17 @@ public class RecommendationController {
                 request
         ));
     }
+
+    @PostMapping("/recommendations/{recommendationId}/refresh")
+    public ResponseEntity<RecommendationRes> refresh(
+            @RequestHeader("Authorization") String authorization,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @PathVariable String recommendationId
+    ) {
+        return ResponseEntity.ok(recommendationService.refresh(
+                authorization,
+                idempotencyKey,
+                recommendationId
+        ));
+    }
 }

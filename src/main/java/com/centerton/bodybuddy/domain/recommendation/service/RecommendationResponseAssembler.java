@@ -83,7 +83,7 @@ public class RecommendationResponseAssembler {
     ) {
         return RecommendationIngredientRes.builder()
                 .ingredientId(ingredient.getIngredientId())
-                .foodId(ingredient.getFood().getFoodId())
+                .foodId(ingredient.getFood() == null ? null : ingredient.getFood().getFoodId())
                 .ingredientName(ingredient.getIngredientName())
                 .reason(ingredient.getReason())
                 .nutrientCoverages(nutrientCoverages(

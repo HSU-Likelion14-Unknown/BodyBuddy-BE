@@ -11,6 +11,7 @@ import com.centerton.bodybuddy.domain.meal.repository.MealRepository;
 import com.centerton.bodybuddy.domain.recommendation.dto.RecommendationDecisionReq;
 import com.centerton.bodybuddy.domain.recommendation.dto.RecommendationDecisionRes;
 import com.centerton.bodybuddy.domain.recommendation.dto.RecommendationRes;
+import com.centerton.bodybuddy.domain.recommendation.config.RecommendationPolicyProperties;
 import com.centerton.bodybuddy.domain.recommendation.entity.NoRecommendationReason;
 import com.centerton.bodybuddy.domain.recommendation.entity.Recommendation;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationDecision;
@@ -48,6 +49,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.EnumMap;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -80,10 +82,14 @@ class RecommendationServiceTest {
     @Mock private RecommendationResponseAssembler responseAssembler;
 
     private RecommendationService recommendationService;
+    private RecommendationPolicyProperties recommendationProperties;
     private User user;
 
     @BeforeEach
     void setUp() {
+        recommendationProperties = new RecommendationPolicyProperties();
+        recommendationProperties.setIngredientCount(2);
+        recommendationProperties.setMinimumTargetCoveragePercent(value("20"));
         recommendationService = new RecommendationService(
                 userRepository,
                 mealRepository,
@@ -94,7 +100,8 @@ class RecommendationServiceTest {
                 decisionRepository,
                 idempotencyKeyRepository,
                 planningService,
-                responseAssembler
+                responseAssembler,
+                recommendationProperties
         );
         user = User.builder().userId("user-id").build();
     }
@@ -115,7 +122,7 @@ class RecommendationServiceTest {
         completeReservation();
         when(recommendationRepository.findByMealMealId(meal.getMealId()))
                 .thenReturn(Optional.empty());
-        when(planningService.plan(user, LocalDate.of(2026, 8, 16), 3)).thenReturn(plan);
+        when(planningService.plan(user, LocalDate.of(2026, 8, 16), 2)).thenReturn(plan);
         when(recommendationRepository.save(any(Recommendation.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(foodRepository.getReferenceById(anyString()))
@@ -140,8 +147,8 @@ class RecommendationServiceTest {
                 .isEqualTo(LocalDate.of(2026, 8, 16));
         assertThat(captor.getValue().getStatus()).isEqualTo(RecommendationStatus.CREATED);
         assertThat(captor.getValue().getTargetNutrient()).isEqualTo(TargetNutrient.IRON);
-        verify(ingredientRepository).save(any(RecommendationIngredient.class));
-        verify(dishRepository).saveAll(anyList());
+        verify(ingredientRepository, times(2)).save(any(RecommendationIngredient.class));
+        verify(dishRepository, times(2)).saveAll(anyList());
         verify(idempotencyKeyRepository).reserve(
                 "create-key", "user-id", "RECOMMENDATION_CREATE", fingerprint(meal));
         verify(idempotencyKeyRepository).completeReservation(
@@ -185,6 +192,102 @@ class RecommendationServiceTest {
         assertThat(result.response().getStatus()).isEqualTo(RecommendationStatus.NO_CANDIDATE);
         assertThat(result.response().getNoRecommendationReason())
                 .isEqualTo(NoRecommendationReason.NO_SAFE_CANDIDATE);
+    }
+
+    @Test
+    void refreshesWithExactlyTwoIngredientsAndExcludesAllPreviousNames() {
+        Recommendation recommendation = recommendation(confirmedMeal(LocalDateTime.now()));
+        RecommendationIngredient spinach = ingredient(recommendation);
+        RecommendationIngredient broccoli = RecommendationIngredient.builder()
+                .ingredientId("ingredient-id-2")
+                .recommendation(recommendation)
+                .food(food("broccoli-food"))
+                .rankOrder(2)
+                .ingredientName("브로콜리")
+                .reason("철 보완에 도움이 되는 원재료입니다.")
+                .nutritionSnapshot(NutritionValues.builder().ironMg(value("1.2")).build())
+                .build();
+        RecommendationPlan refreshedPlan = planWithIngredient();
+        RecommendationRes assembled = response(recommendation);
+        authenticate();
+        when(idempotencyKeyRepository.findById("refresh-key")).thenReturn(Optional.empty());
+        when(recommendationRepository.findOwnedByIdForUpdate(
+                recommendation.getRecommendationId(), "user-id"))
+                .thenReturn(Optional.of(recommendation));
+        reserveNewKey();
+        completeReservation();
+        when(ingredientRepository.findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
+                recommendation.getRecommendationId()))
+                .thenReturn(List.of(spinach, broccoli));
+        when(planningService.plan(
+                org.mockito.ArgumentMatchers.eq(user),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 8, 16)),
+                org.mockito.ArgumentMatchers.eq(2),
+                any(Collection.class)
+        )).thenReturn(refreshedPlan);
+        when(foodRepository.getReferenceById(anyString()))
+                .thenAnswer(invocation -> food(invocation.getArgument(0)));
+        when(ingredientRepository.save(any(RecommendationIngredient.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(dishRepository.saveAll(anyList()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(responseAssembler.assemble(recommendation)).thenReturn(assembled);
+
+        RecommendationRes result = recommendationService.refresh(
+                AUTHORIZATION,
+                "refresh-key",
+                recommendation.getRecommendationId()
+        );
+
+        assertThat(result).isSameAs(assembled);
+        assertThat(recommendation.getRefreshCount()).isEqualTo(1);
+        assertThat(recommendation.getExcludedIngredientNames())
+                .containsExactly("시금치", "브로콜리");
+        ArgumentCaptor<Collection<String>> exclusions = ArgumentCaptor.forClass(Collection.class);
+        verify(planningService).plan(
+                org.mockito.ArgumentMatchers.eq(user),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 8, 16)),
+                org.mockito.ArgumentMatchers.eq(2),
+                exclusions.capture()
+        );
+        assertThat(exclusions.getValue()).containsExactly("시금치", "브로콜리");
+        verify(dishRepository).deleteAllForRecommendation(recommendation.getRecommendationId());
+        verify(ingredientRepository).deleteAllForRecommendation(
+                recommendation.getRecommendationId());
+        verify(ingredientRepository, times(2)).save(any(RecommendationIngredient.class));
+    }
+
+    @Test
+    void keepsCurrentRecommendationWhenRefreshCannotFillTwoIngredients() {
+        Recommendation recommendation = recommendation(confirmedMeal(LocalDateTime.now()));
+        RecommendationIngredient current = ingredient(recommendation);
+        authenticate();
+        when(idempotencyKeyRepository.findById("refresh-key")).thenReturn(Optional.empty());
+        when(recommendationRepository.findOwnedByIdForUpdate(
+                recommendation.getRecommendationId(), "user-id"))
+                .thenReturn(Optional.of(recommendation));
+        reserveNewKey();
+        when(ingredientRepository.findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
+                recommendation.getRecommendationId()))
+                .thenReturn(List.of(current));
+        when(planningService.plan(
+                org.mockito.ArgumentMatchers.eq(user),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 8, 16)),
+                org.mockito.ArgumentMatchers.eq(2),
+                any(Collection.class)
+        )).thenReturn(new RecommendationPlan(gap(TargetNutrient.IRON), List.of()));
+
+        assertThatThrownBy(() -> recommendationService.refresh(
+                AUTHORIZATION,
+                "refresh-key",
+                recommendation.getRecommendationId()
+        )).isInstanceOfSatisfying(BaseException.class, exception ->
+                assertThat(exception.getBaseResponseCode())
+                        .isEqualTo(ErrorResponseCode.RECOMMENDATION_REFRESH_EXHAUSTED));
+
+        verify(dishRepository, never()).deleteAllForRecommendation(anyString());
+        verify(ingredientRepository, never()).deleteAllForRecommendation(anyString());
+        verify(ingredientRepository, never()).save(any());
     }
 
     @Test
@@ -503,7 +606,7 @@ class RecommendationServiceTest {
         completeReservation();
         when(recommendationRepository.findByMealMealId(meal.getMealId()))
                 .thenReturn(Optional.empty());
-        when(planningService.plan(user, LocalDate.of(2026, 8, 16), 3)).thenReturn(plan);
+        when(planningService.plan(user, LocalDate.of(2026, 8, 16), 2)).thenReturn(plan);
         when(recommendationRepository.save(any(Recommendation.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
     }
@@ -567,9 +670,26 @@ class RecommendationServiceTest {
                 new RecommendedDish("dish-template-1", "dish-food-1", "시금치무침", 1),
                 new RecommendedDish("dish-template-2", null, "시금치된장국", 2)
         );
+        RankedIngredient second = new RankedIngredient(
+                "ingredient-food-2",
+                "렌틸콩",
+                2,
+                TargetNutrient.IRON,
+                value("3.3"),
+                value("0.66"),
+                value("0.8"),
+                NutritionValues.builder().ironMg(value("3.3")).build()
+        );
+        List<RecommendedDish> secondDishes = List.of(
+                new RecommendedDish("dish-template-3", null, "렌틸콩 샐러드", 1),
+                new RecommendedDish("dish-template-4", null, "렌틸콩 수프", 2)
+        );
         return new RecommendationPlan(
                 gap(TargetNutrient.IRON),
-                List.of(new IngredientDishRecommendation(ranked, dishes))
+                List.of(
+                        new IngredientDishRecommendation(ranked, dishes),
+                        new IngredientDishRecommendation(second, secondDishes)
+                )
         );
     }
 
