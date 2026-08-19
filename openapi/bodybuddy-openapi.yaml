@@ -627,17 +627,36 @@ components:
         rank: {type: integer, minimum: 1, maximum: 3}
     RecommendationIngredient:
       type: object
-      required: [ingredientId, foodId, ingredientName, reason, dishes]
+      required: [ingredientId, foodId, ingredientName, reason, nutrientCoverages, dishes]
       properties:
         ingredientId: {type: string, format: uuid}
         foodId: {type: string, format: uuid}
         ingredientName: {type: string}
         reason: {type: string}
+        nutrientCoverages:
+          type: array
+          minItems: 7
+          maxItems: 7
+          description: 원재료 100g의 영양소별 하루 권장량 충족률. 충족률 내림차순으로 반환
+          items: {$ref: '#/components/schemas/NutrientCoverage'}
         dishes:
           type: array
           minItems: 2
           maxItems: 3
           items: {$ref: '#/components/schemas/RecommendationDish'}
+    NutrientCoverage:
+      type: object
+      required: [nutrient, coveragePercent]
+      properties:
+        nutrient:
+          type: string
+          enum: [PROTEIN, FIBER, CALCIUM, IRON, POTASSIUM, VITAMIN_A, VITAMIN_C]
+        coveragePercent:
+          type: number
+          minimum: 0
+          maximum: 100
+          multipleOf: 0.1
+          description: KDRI 하루 권장량 대비 충족률(%). 100을 상한으로 소수점 첫째 자리까지 반환
     RecommendationResponse:
       type: object
       required: [recommendationId, status, ingredients, dailyNutrition, nutrientGap]
