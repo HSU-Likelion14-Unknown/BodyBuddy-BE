@@ -17,6 +17,7 @@ import com.centerton.bodybuddy.domain.recommendation.model.RecommendedDish;
 import com.centerton.bodybuddy.domain.recommendation.model.TargetNutrient;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -29,6 +30,7 @@ import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AiIngredientFallbackService {
 
     private static final int SCORE_SCALE = 8;
@@ -63,7 +65,14 @@ public class AiIngredientFallbackService {
         );
 
         List<IngredientDishRecommendation> result = new ArrayList<>();
-        for (AiIngredientCandidate candidate : client.recommend(input)) {
+        List<AiIngredientCandidate> candidates;
+        try {
+            candidates = client.recommend(input);
+        } catch (RuntimeException exception) {
+            log.warn("AI 원재료 보완 후보 조회에 실패했습니다.", exception);
+            return List.of();
+        }
+        for (AiIngredientCandidate candidate : candidates) {
             IngredientDishRecommendation validated = validateCandidate(
                     user,
                     gapResult,
