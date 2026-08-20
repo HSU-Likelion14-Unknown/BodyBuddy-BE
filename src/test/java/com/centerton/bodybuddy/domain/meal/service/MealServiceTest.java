@@ -512,6 +512,75 @@ class MealServiceTest {
     }
 
     @Test
+    void estimatesNutritionWhenMatchedCatalogFoodHasNoUsableNutrition() {
+        authenticate(user);
+        Meal meal = Meal.createText(user, "바나나", LocalDateTime.now());
+        meal.markReviewRequired();
+        Food banana = Food.builder()
+                .foodId("banana-food-id")
+                .canonicalName("바나나, 생것")
+                .normalizedName("바나나,생것")
+                .active(true)
+                .build();
+        when(mealRepository.findByMealIdAndUserUserId("meal-id", "user-id"))
+                .thenReturn(Optional.of(meal));
+        when(foodMatchingService.matchByName("바나나"))
+                .thenReturn(Optional.of(new FoodCatalogMatch(banana, null)));
+        when(nutritionEstimationClient.estimate(any(FoodNutritionEstimationInput.class)))
+                .thenReturn(Optional.of(new FoodNutritionEstimationResponse(
+                        NutritionValues.builder()
+                                .caloriesKcal(new BigDecimal("105"))
+                                .carbohydrateG(new BigDecimal("27"))
+                                .proteinG(new BigDecimal("1.3"))
+                                .fatG(new BigDecimal("0.4"))
+                                .fiberG(new BigDecimal("3.1"))
+                                .sodiumMg(BigDecimal.ZERO)
+                                .calciumMg(new BigDecimal("6"))
+                                .ironMg(new BigDecimal("0.3"))
+                                .potassiumMg(new BigDecimal("422"))
+                                .vitaminAMcgRae(new BigDecimal("4"))
+                                .vitaminCMg(new BigDecimal("10"))
+                                .build(),
+                        new BigDecimal("0.80"),
+                        "OPENAI",
+                        "gpt-5-mini-2025-08-07",
+                        "food-nutrition-estimation-v2",
+                        "resp_banana_nutrition",
+                        80,
+                        30
+                )));
+        when(mealItemRepository.saveAll(anyList()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(nutritionSummaryRepository.findById("meal-id")).thenReturn(Optional.empty());
+        when(nutritionSummaryRepository.save(any(MealNutritionSummary.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        MealConfirmRes response = mealService.confirmMeal(
+                "Bearer raw-access-key",
+                "meal-id",
+                new MealConfirmReq(
+                        List.of(new MealItemInputReq(
+                                null, "바나나", BigDecimal.ONE, "인분"
+                        )),
+                        OffsetDateTime.now()
+                )
+        );
+
+        MealItemRes item = response.getItems().getFirst();
+        assertThat(item.getFoodId()).isEqualTo("banana-food-id");
+        assertThat(item.getNutritionStatus()).isEqualTo(NutritionStatus.ESTIMATED);
+        assertThat(item.getNutritionBasis()).isEqualTo(NutritionBasis.AI_ESTIMATE);
+        assertThat(item.getCaloriesKcal()).isEqualByComparingTo("105");
+        assertThat(response.getNutritionSummaryStatus())
+                .isEqualTo(NutritionSummaryStatus.COMPLETE);
+        verify(nutritionEstimationClient).estimate(new FoodNutritionEstimationInput(
+                "바나나",
+                BigDecimal.ONE,
+                "인분"
+        ));
+    }
+
+    @Test
     void storesUnmatchedDirectInputWithPartialNutritionSummary() {
         authenticate(user);
         Meal meal = Meal.createText(user, "엄마표 특별식", LocalDateTime.now());
