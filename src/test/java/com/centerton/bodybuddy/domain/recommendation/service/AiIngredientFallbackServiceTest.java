@@ -2,6 +2,7 @@ package com.centerton.bodybuddy.domain.recommendation.service;
 
 import com.centerton.bodybuddy.domain.meal.entity.NutritionValues;
 import com.centerton.bodybuddy.domain.recommendation.client.AiDishCandidate;
+import com.centerton.bodybuddy.domain.recommendation.client.AiDishRecommendationInput;
 import com.centerton.bodybuddy.domain.recommendation.client.AiIngredientCandidate;
 import com.centerton.bodybuddy.domain.recommendation.client.AiIngredientRecommendationClient;
 import com.centerton.bodybuddy.domain.recommendation.client.AiIngredientRecommendationInput;
@@ -10,12 +11,15 @@ import com.centerton.bodybuddy.domain.recommendation.model.IngredientDishRecomme
 import com.centerton.bodybuddy.domain.recommendation.model.KdrReferenceValues;
 import com.centerton.bodybuddy.domain.recommendation.model.NutrientGap;
 import com.centerton.bodybuddy.domain.recommendation.model.NutritionGapResult;
+import com.centerton.bodybuddy.domain.recommendation.model.RankedIngredient;
+import com.centerton.bodybuddy.domain.recommendation.model.RecommendedDish;
 import com.centerton.bodybuddy.domain.recommendation.model.TargetNutrient;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -26,6 +30,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class AiIngredientFallbackServiceTest {
@@ -74,6 +79,78 @@ class AiIngredientFallbackServiceTest {
         assertThat(result.getFirst().rankedIngredient().dailyTargetCoverageRatio())
                 .isEqualByComparingTo("0.20");
         assertThat(result.getFirst().dishes()).hasSize(2);
+    }
+
+    @Test
+    void completesDishesForKnownCatalogIngredientAndRejectsUnrelatedDish() {
+        when(client.recommendDishes(any(AiDishRecommendationInput.class)))
+                .thenReturn(List.of(
+                        new AiDishCandidate(
+                                "시금치나물", List.of("시금치"), List.of()
+                        ),
+                        new AiDishCandidate(
+                                "시금치국", List.of("시금치", "된장"), List.of("SOY")
+                        ),
+                        new AiDishCandidate(
+                                "감자전", List.of("감자"), List.of()
+                        )
+                ));
+        User user = User.builder()
+                .userId("user-id")
+                .allergyCodes(List.of())
+                .dislikedFoods(List.of())
+                .build();
+        RankedIngredient ingredient = new RankedIngredient(
+                "spinach-food",
+                "시금치",
+                1,
+                TargetNutrient.IRON,
+                value("2.4"),
+                value("0.3"),
+                value("0.5"),
+                NutritionValues.builder().ironMg(value("2.4")).build()
+        );
+
+        List<RecommendedDish> result = service.completeDishes(user, ingredient);
+
+        assertThat(result)
+                .extracting(RecommendedDish::dishName)
+                .containsExactly("시금치나물", "시금치국");
+        ArgumentCaptor<AiDishRecommendationInput> inputCaptor =
+                ArgumentCaptor.forClass(AiDishRecommendationInput.class);
+        verify(client).recommendDishes(inputCaptor.capture());
+        assertThat(inputCaptor.getValue().ingredientName()).isEqualTo("시금치");
+    }
+
+    @Test
+    void requiresExactNormalizedIngredientNameWhenCompletingDishes() {
+        when(client.recommendDishes(any(AiDishRecommendationInput.class)))
+                .thenReturn(List.of(
+                        new AiDishCandidate("콩나물국", List.of("콩나물"), List.of()),
+                        new AiDishCandidate("렌틸콩샐러드", List.of("렌틸콩"), List.of()),
+                        new AiDishCandidate("콩조림", List.of("콩"), List.of())
+                ));
+        User user = User.builder()
+                .userId("user-id")
+                .allergyCodes(List.of())
+                .dislikedFoods(List.of())
+                .build();
+        RankedIngredient ingredient = new RankedIngredient(
+                "soy-food",
+                "콩",
+                1,
+                TargetNutrient.IRON,
+                value("2.4"),
+                value("0.3"),
+                value("0.5"),
+                NutritionValues.builder().ironMg(value("2.4")).build()
+        );
+
+        List<RecommendedDish> result = service.completeDishes(user, ingredient);
+
+        assertThat(result)
+                .extracting(RecommendedDish::dishName)
+                .containsExactly("콩조림");
     }
 
     private AiIngredientCandidate candidate(String name, String ironMg) {

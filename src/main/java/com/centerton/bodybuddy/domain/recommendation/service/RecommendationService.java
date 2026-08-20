@@ -39,6 +39,7 @@ import com.centerton.bodybuddy.global.response.code.ErrorResponseCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -46,6 +47,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -55,6 +57,7 @@ public class RecommendationService {
     private static final String RECOMMENDATION_CREATE = "RECOMMENDATION_CREATE";
     private static final String RECOMMENDATION_REFRESH = "RECOMMENDATION_REFRESH";
     private static final String RECOMMENDATION_DECISION = "RECOMMENDATION_DECISION";
+    private static final int MAX_CONCURRENT_REPLAN_ATTEMPTS = 3;
     private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
 
     private final UserRepository userRepository;
@@ -68,58 +71,126 @@ public class RecommendationService {
     private final RecommendationPlanningService planningService;
     private final RecommendationResponseAssembler responseAssembler;
     private final RecommendationPolicyProperties recommendationProperties;
+    private final TransactionOperations transactionOperations;
 
-    @Transactional
     public RecommendationCreationResult create(String authorization,
                                                String idempotencyKey,
                                                String mealId) {
         User user = authenticatedUser(authorization);
         String fingerprint = AccessKeyGenerator.hash(RECOMMENDATION_CREATE + ":" + mealId);
-        RecommendationCreationResult previous = findIdempotentCreation(
-                idempotencyKey,
-                user,
-                fingerprint
+        RecommendationCreationResult previous = transactionOperations.execute(
+                status -> findIdempotentCreation(idempotencyKey, user, fingerprint)
         );
         if (previous != null) {
             return previous;
         }
 
-        Meal meal = mealRepository.findOwnedByIdForUpdate(mealId, user.getUserId())
+        for (int attempt = 0; attempt < MAX_CONCURRENT_REPLAN_ATTEMPTS; attempt++) {
+            CreationPlanningSnapshot snapshot = Objects.requireNonNull(
+                    transactionOperations.execute(status -> prepareCreation(
+                            user.getUserId(), mealId
+                    ))
+            );
+            RecommendationPlan plan = planningService.plan(
+                    user,
+                    snapshot.recommendationDate(),
+                    recommendationProperties.getIngredientCount(),
+                    snapshot.previousRecommendation().ingredientNames()
+            );
+            CreationCommitResult committed = Objects.requireNonNull(
+                    transactionOperations.execute(status -> commitCreation(
+                            user.getUserId(), idempotencyKey, mealId, fingerprint, snapshot, plan
+                    ))
+            );
+            if (!committed.retry()) {
+                return committed.result();
+            }
+        }
+        throw new BaseException(ErrorResponseCode.RECOMMENDATION_CREATION_CONFLICT);
+    }
+
+    private CreationPlanningSnapshot prepareCreation(String userId, String mealId) {
+        Meal meal = requireCreatableMealForUpdate(mealId, userId);
+        if (recommendationRepository.findByMealMealId(mealId).isPresent()) {
+            throw new BaseException(ErrorResponseCode.RECOMMENDATION_ALREADY_EXISTS);
+        }
+        return new CreationPlanningSnapshot(
+                kstDate(meal.getEatenAt()),
+                latestRecommendationSnapshot(userId)
+        );
+    }
+
+    private CreationCommitResult commitCreation(
+            String userId,
+            String idempotencyKey,
+            String mealId,
+            String fingerprint,
+            CreationPlanningSnapshot snapshot,
+            RecommendationPlan plan
+    ) {
+        User lockedUser = lockUser(userId);
+        RecommendationCreationResult previous = findIdempotentCreation(
+                idempotencyKey, lockedUser, fingerprint
+        );
+        if (previous != null) {
+            return CreationCommitResult.completed(previous);
+        }
+        Meal meal = requireCreatableMealForUpdate(mealId, userId);
+        if (recommendationRepository.findByMealMealId(mealId).isPresent()) {
+            throw new BaseException(ErrorResponseCode.RECOMMENDATION_ALREADY_EXISTS);
+        }
+        if (!snapshot.previousRecommendation().equals(latestRecommendationSnapshot(userId))) {
+            return CreationCommitResult.retryRequired();
+        }
+        if (!reserveIdempotencyKey(
+                idempotencyKey, lockedUser, RECOMMENDATION_CREATE, fingerprint
+        )) {
+            return CreationCommitResult.completed(requireIdempotentCreation(
+                    idempotencyKey, lockedUser, fingerprint
+            ));
+        }
+        Recommendation recommendation = saveRecommendation(
+                lockedUser, meal, snapshot.recommendationDate(), plan
+        );
+        completeIdempotencyKey(idempotencyKey, recommendation.getRecommendationId());
+        return CreationCommitResult.completed(new RecommendationCreationResult(
+                responseAssembler.assemble(recommendation), true
+        ));
+    }
+
+    private Meal requireCreatableMealForUpdate(String mealId, String userId) {
+        Meal meal = mealRepository.findOwnedByIdForUpdate(mealId, userId)
                 .orElseThrow(() -> new BaseException(ErrorResponseCode.MEAL_NOT_FOUND));
         if (meal.getStatus() != MealStatus.CONFIRMED
                 && meal.getStatus() != MealStatus.COMPLETED) {
             throw new BaseException(ErrorResponseCode.RECOMMENDATION_CREATION_CONFLICT);
         }
-        if (!reserveIdempotencyKey(
-                idempotencyKey,
-                user,
-                RECOMMENDATION_CREATE,
-                fingerprint
-        )) {
-            return requireIdempotentCreation(idempotencyKey, user, fingerprint);
-        }
-        if (recommendationRepository.findByMealMealId(mealId).isPresent()) {
-            throw new BaseException(ErrorResponseCode.RECOMMENDATION_ALREADY_EXISTS);
-        }
+        return meal;
+    }
 
-        LocalDate recommendationDate = kstDate(meal.getEatenAt());
-        RecommendationPlan plan = planningService.plan(
-                user,
-                recommendationDate,
-                recommendationProperties.getIngredientCount()
-        );
-        Recommendation recommendation = saveRecommendation(user, meal, recommendationDate, plan);
-        completeIdempotencyKey(
-                idempotencyKey,
-                recommendation.getRecommendationId()
-        );
-        return new RecommendationCreationResult(
-                responseAssembler.assemble(recommendation),
-                true
+    private PreviousRecommendationSnapshot latestRecommendationSnapshot(String userId) {
+        Recommendation latest = recommendationRepository
+                .findFirstByUserUserIdOrderByCreatedAtDescRecommendationIdDesc(userId)
+                .orElse(null);
+        if (latest == null) {
+            return new PreviousRecommendationSnapshot(null, List.of());
+        }
+        List<String> ingredientNames = ingredientRepository
+                .findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
+                        latest.getRecommendationId()
+                )
+                .stream()
+                .map(RecommendationIngredient::getIngredientName)
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(name -> !name.isBlank())
+                .distinct()
+                .toList();
+        return new PreviousRecommendationSnapshot(
+                latest.getRecommendationId(), ingredientNames
         );
     }
 
-    @Transactional
     public RecommendationRes refresh(String authorization,
                                      String idempotencyKey,
                                      String recommendationId) {
@@ -127,54 +198,86 @@ public class RecommendationService {
         String fingerprint = AccessKeyGenerator.hash(
                 RECOMMENDATION_REFRESH + ":" + recommendationId
         );
-        RecommendationRes previous = findIdempotentRefresh(
-                idempotencyKey,
-                user,
-                fingerprint
+        RecommendationRes previous = transactionOperations.execute(
+                status -> findIdempotentRefresh(idempotencyKey, user, fingerprint)
         );
         if (previous != null) {
             return previous;
         }
 
-        Recommendation recommendation = recommendationRepository
-                .findOwnedByIdForUpdate(recommendationId, user.getUserId())
-                .orElseThrow(() -> new BaseException(ErrorResponseCode.RECOMMENDATION_NOT_FOUND));
-        if (!reserveIdempotencyKey(
-                idempotencyKey,
-                user,
-                RECOMMENDATION_REFRESH,
-                fingerprint
-        )) {
-            return requireIdempotentRefresh(idempotencyKey, user, fingerprint);
+        for (int attempt = 0; attempt < MAX_CONCURRENT_REPLAN_ATTEMPTS; attempt++) {
+            RefreshPlanningSnapshot snapshot = Objects.requireNonNull(
+                    transactionOperations.execute(status -> prepareRefresh(
+                            recommendationId, user.getUserId()
+                    ))
+            );
+            RecommendationPlan plan = planningService.plan(
+                    user,
+                    snapshot.recommendationDate(),
+                    recommendationProperties.getIngredientCount(),
+                    snapshot.exclusions()
+            );
+            if (plan.ingredients().size() != recommendationProperties.getIngredientCount()) {
+                throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_EXHAUSTED);
+            }
+            RefreshCommitResult committed = Objects.requireNonNull(
+                    transactionOperations.execute(status -> commitRefresh(
+                            user.getUserId(), idempotencyKey, recommendationId,
+                            fingerprint, snapshot, plan
+                    ))
+            );
+            if (!committed.retry()) {
+                return committed.result();
+            }
         }
-        if (recommendation.getStatus() != RecommendationStatus.CREATED) {
-            throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_CONFLICT);
-        }
+        throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_CONFLICT);
+    }
 
-        if (recommendation.getRefreshCount() >= recommendationProperties.getMaxRefreshCount()) {
-            throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_EXHAUSTED);
-        }
-
-        List<RecommendationIngredient> currentIngredients = ingredientRepository
-                .findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
-                        recommendationId
-                );
-        List<String> currentNames = currentIngredients.stream()
-                .map(RecommendationIngredient::getIngredientName)
-                .toList();
+    private RefreshPlanningSnapshot prepareRefresh(String recommendationId, String userId) {
+        Recommendation recommendation = requireRefreshableRecommendationForUpdate(
+                recommendationId, userId
+        );
+        List<String> currentNames = currentIngredientNames(recommendationId);
         List<String> exclusions = new java.util.ArrayList<>(
                 recommendation.getExcludedIngredientNames()
         );
         exclusions.addAll(currentNames);
-
-        RecommendationPlan plan = planningService.plan(
-                user,
+        return new RefreshPlanningSnapshot(
                 recommendation.getRecommendationDate(),
-                recommendationProperties.getIngredientCount(),
-                exclusions
+                recommendation.getRefreshCount(),
+                List.copyOf(currentNames),
+                List.copyOf(exclusions)
         );
-        if (plan.ingredients().size() != recommendationProperties.getIngredientCount()) {
-            throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_EXHAUSTED);
+    }
+
+    private RefreshCommitResult commitRefresh(
+            String userId,
+            String idempotencyKey,
+            String recommendationId,
+            String fingerprint,
+            RefreshPlanningSnapshot snapshot,
+            RecommendationPlan plan
+    ) {
+        User lockedUser = lockUser(userId);
+        RecommendationRes previous = findIdempotentRefresh(
+                idempotencyKey, lockedUser, fingerprint
+        );
+        if (previous != null) {
+            return RefreshCommitResult.completed(previous);
+        }
+        Recommendation recommendation = requireRefreshableRecommendationForUpdate(
+                recommendationId, userId
+        );
+        if (recommendation.getRefreshCount() != snapshot.refreshCount()
+                || !currentIngredientNames(recommendationId).equals(snapshot.currentNames())) {
+            return RefreshCommitResult.retryRequired();
+        }
+        if (!reserveIdempotencyKey(
+                idempotencyKey, lockedUser, RECOMMENDATION_REFRESH, fingerprint
+        )) {
+            return RefreshCommitResult.completed(requireIdempotentRefresh(
+                    idempotencyKey, lockedUser, fingerprint
+            ));
         }
 
         dishRepository.deleteAllForRecommendation(recommendationId);
@@ -184,11 +287,44 @@ public class RecommendationService {
                 gap.target().orElse(null),
                 gap.dailyNutrition(),
                 gapSnapshot(gap),
-                currentNames
+                snapshot.currentNames()
         );
         saveIngredients(recommendation, plan.ingredients(), gap.target().orElse(null));
         completeIdempotencyKey(idempotencyKey, recommendationId);
-        return responseAssembler.assemble(recommendation);
+        return RefreshCommitResult.completed(responseAssembler.assemble(recommendation));
+    }
+
+    private Recommendation requireRefreshableRecommendationForUpdate(
+            String recommendationId,
+            String userId
+    ) {
+        Recommendation recommendation = recommendationRepository
+                .findOwnedByIdForUpdate(recommendationId, userId)
+                .orElseThrow(() -> new BaseException(ErrorResponseCode.RECOMMENDATION_NOT_FOUND));
+        if (recommendation.getStatus() != RecommendationStatus.CREATED) {
+            throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_CONFLICT);
+        }
+        if (recommendation.getRefreshCount() >= recommendationProperties.getMaxRefreshCount()) {
+            throw new BaseException(ErrorResponseCode.RECOMMENDATION_REFRESH_EXHAUSTED);
+        }
+        return recommendation;
+    }
+
+    private List<String> currentIngredientNames(String recommendationId) {
+        return ingredientRepository
+                .findAllByRecommendationRecommendationIdOrderByRankOrderAsc(recommendationId)
+                .stream()
+                .map(RecommendationIngredient::getIngredientName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(name -> !name.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    private User lockUser(String userId) {
+        return userRepository.findByUserIdForUpdate(userId)
+                .orElseThrow(() -> new BaseException(ErrorResponseCode.UNAUTHORIZED_REQUEST));
     }
 
     @Transactional
@@ -556,5 +692,51 @@ public class RecommendationService {
 
     private String trimToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private record PreviousRecommendationSnapshot(
+            String recommendationId,
+            List<String> ingredientNames
+    ) {
+    }
+
+    private record CreationPlanningSnapshot(
+            LocalDate recommendationDate,
+            PreviousRecommendationSnapshot previousRecommendation
+    ) {
+    }
+
+    private record CreationCommitResult(
+            RecommendationCreationResult result,
+            boolean retry
+    ) {
+        private static CreationCommitResult completed(RecommendationCreationResult result) {
+            return new CreationCommitResult(result, false);
+        }
+
+        private static CreationCommitResult retryRequired() {
+            return new CreationCommitResult(null, true);
+        }
+    }
+
+    private record RefreshPlanningSnapshot(
+            LocalDate recommendationDate,
+            int refreshCount,
+            List<String> currentNames,
+            List<String> exclusions
+    ) {
+    }
+
+    private record RefreshCommitResult(
+            RecommendationRes result,
+            boolean retry
+    ) {
+        private static RefreshCommitResult completed(RecommendationRes result) {
+            return new RefreshCommitResult(result, false);
+        }
+
+        private static RefreshCommitResult retryRequired() {
+            return new RefreshCommitResult(null, true);
+        }
     }
 }

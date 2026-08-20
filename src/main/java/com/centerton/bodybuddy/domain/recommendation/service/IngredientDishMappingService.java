@@ -87,6 +87,18 @@ public class IngredientDishMappingService {
         return List.copyOf(mappingRepository.findMappableIngredientFoodIds());
     }
 
+    @Transactional(readOnly = true)
+    public List<RecommendedDish> findSafeDishes(User user, RankedIngredient ingredient) {
+        if (user == null || ingredient == null || ingredient.foodId() == null
+                || ingredient.foodId().isBlank()) {
+            return List.of();
+        }
+        return safeDishes(
+                user,
+                mappingRepository.findActiveMappings(List.of(ingredient.foodId()))
+        );
+    }
+
     private Map<String, List<IngredientDishMapping>> groupMappings(
             List<RankedIngredient> batch
     ) {

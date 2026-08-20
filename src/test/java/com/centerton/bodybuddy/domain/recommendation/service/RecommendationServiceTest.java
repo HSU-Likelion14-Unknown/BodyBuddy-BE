@@ -43,6 +43,8 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -61,6 +63,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -80,6 +83,7 @@ class RecommendationServiceTest {
     @Mock private IdempotencyKeyRepository idempotencyKeyRepository;
     @Mock private RecommendationPlanningService planningService;
     @Mock private RecommendationResponseAssembler responseAssembler;
+    @Mock private TransactionOperations transactionOperations;
 
     private RecommendationService recommendationService;
     private RecommendationPolicyProperties recommendationProperties;
@@ -87,6 +91,7 @@ class RecommendationServiceTest {
 
     @BeforeEach
     void setUp() {
+        user = User.builder().userId("user-id").build();
         recommendationProperties = new RecommendationPolicyProperties();
         recommendationProperties.setIngredientCount(2);
         recommendationProperties.setMinimumTargetCoveragePercent(value("20"));
@@ -101,14 +106,23 @@ class RecommendationServiceTest {
                 idempotencyKeyRepository,
                 planningService,
                 responseAssembler,
-                recommendationProperties
+                recommendationProperties,
+                transactionOperations
         );
-        user = User.builder().userId("user-id").build();
+        lenient().when(transactionOperations.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+        lenient().when(userRepository.findByUserIdForUpdate("user-id"))
+                .thenReturn(Optional.of(user));
     }
 
     @Test
     void createsRecommendationSnapshotsForConfirmedMeal() {
         Meal meal = confirmedMeal(LocalDateTime.of(2026, 8, 15, 16, 30));
+        Recommendation previousRecommendation = recommendation(
+                confirmedMeal(LocalDateTime.of(2026, 8, 14, 12, 0))
+        );
         RecommendationPlan plan = planWithIngredient();
         RecommendationRes assembled = RecommendationRes.builder()
                 .recommendationId("response-id")
@@ -122,7 +136,16 @@ class RecommendationServiceTest {
         completeReservation();
         when(recommendationRepository.findByMealMealId(meal.getMealId()))
                 .thenReturn(Optional.empty());
-        when(planningService.plan(user, LocalDate.of(2026, 8, 16), 2)).thenReturn(plan);
+        when(recommendationRepository
+                .findFirstByUserUserIdOrderByCreatedAtDescRecommendationIdDesc("user-id"))
+                .thenReturn(Optional.of(previousRecommendation));
+        when(ingredientRepository
+                .findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
+                        previousRecommendation.getRecommendationId()))
+                .thenReturn(List.of(ingredient(previousRecommendation)));
+        when(planningService.plan(
+                user, LocalDate.of(2026, 8, 16), 2, List.of("시금치")))
+                .thenReturn(plan);
         when(recommendationRepository.save(any(Recommendation.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(foodRepository.getReferenceById(anyString()))
@@ -147,12 +170,89 @@ class RecommendationServiceTest {
                 .isEqualTo(LocalDate.of(2026, 8, 16));
         assertThat(captor.getValue().getStatus()).isEqualTo(RecommendationStatus.CREATED);
         assertThat(captor.getValue().getTargetNutrient()).isEqualTo(TargetNutrient.IRON);
+        verify(planningService).plan(
+                user, LocalDate.of(2026, 8, 16), 2, List.of("시금치"));
         verify(ingredientRepository, times(2)).save(any(RecommendationIngredient.class));
         verify(dishRepository, times(2)).saveAll(anyList());
         verify(idempotencyKeyRepository).reserve(
                 "create-key", "user-id", "RECOMMENDATION_CREATE", fingerprint(meal));
         verify(idempotencyKeyRepository).completeReservation(
                 "create-key", captor.getValue().getRecommendationId());
+    }
+
+    @Test
+    void replansWhenLatestRecommendationChangesBeforeCommit() {
+        Meal meal = confirmedMeal(LocalDateTime.of(2026, 8, 15, 16, 30));
+        Recommendation firstPrevious = recommendation(
+                confirmedMeal(LocalDateTime.of(2026, 8, 14, 12, 0))
+        );
+        Recommendation concurrentPrevious = recommendation(
+                confirmedMeal(LocalDateTime.of(2026, 8, 15, 12, 0))
+        );
+        RecommendationIngredient spinach = ingredient(firstPrevious);
+        RecommendationIngredient broccoli = RecommendationIngredient.builder()
+                .ingredientId("broccoli-ingredient")
+                .recommendation(concurrentPrevious)
+                .rankOrder(1)
+                .ingredientName("브로콜리")
+                .nutritionSnapshot(NutritionValues.builder().ironMg(value("1.2")).build())
+                .build();
+        RecommendationPlan plan = planWithIngredient();
+        RecommendationRes assembled = RecommendationRes.builder()
+                .recommendationId("response-id")
+                .status(RecommendationStatus.CREATED)
+                .build();
+        authenticate();
+        when(idempotencyKeyRepository.findById("create-key")).thenReturn(Optional.empty());
+        when(mealRepository.findOwnedByIdForUpdate(meal.getMealId(), "user-id"))
+                .thenReturn(Optional.of(meal));
+        when(recommendationRepository
+                .findFirstByUserUserIdOrderByCreatedAtDescRecommendationIdDesc("user-id"))
+                .thenReturn(
+                        Optional.of(firstPrevious),
+                        Optional.of(concurrentPrevious),
+                        Optional.of(concurrentPrevious),
+                        Optional.of(concurrentPrevious)
+                );
+        when(ingredientRepository
+                .findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
+                        firstPrevious.getRecommendationId()))
+                .thenReturn(List.of(spinach));
+        when(ingredientRepository
+                .findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
+                        concurrentPrevious.getRecommendationId()))
+                .thenReturn(List.of(broccoli));
+        when(planningService.plan(
+                user, LocalDate.of(2026, 8, 16), 2, List.of("시금치")))
+                .thenReturn(plan);
+        when(planningService.plan(
+                user, LocalDate.of(2026, 8, 16), 2, List.of("브로콜리")))
+                .thenReturn(plan);
+        reserveNewKey();
+        completeReservation();
+        when(recommendationRepository.save(any(Recommendation.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(foodRepository.getReferenceById(anyString()))
+                .thenAnswer(invocation -> food(invocation.getArgument(0)));
+        when(ingredientRepository.save(any(RecommendationIngredient.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(dishRepository.saveAll(anyList()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(responseAssembler.assemble(any(Recommendation.class))).thenReturn(assembled);
+
+        RecommendationCreationResult result = recommendationService.create(
+                AUTHORIZATION,
+                "create-key",
+                meal.getMealId()
+        );
+
+        assertThat(result.createdNow()).isTrue();
+        verify(planningService).plan(
+                user, LocalDate.of(2026, 8, 16), 2, List.of("시금치"));
+        verify(planningService).plan(
+                user, LocalDate.of(2026, 8, 16), 2, List.of("브로콜리"));
+        verify(userRepository, times(2)).findByUserIdForUpdate("user-id");
+        verify(recommendationRepository).save(any(Recommendation.class));
     }
 
     @Test
@@ -203,9 +303,30 @@ class RecommendationServiceTest {
                 .recommendation(recommendation)
                 .food(food("broccoli-food"))
                 .rankOrder(2)
-                .ingredientName("브로콜리")
+                .ingredientName("  브로콜리  ")
                 .reason("철 보완에 도움이 되는 원재료입니다.")
                 .nutritionSnapshot(NutritionValues.builder().ironMg(value("1.2")).build())
+                .build();
+        RecommendationIngredient blankName = RecommendationIngredient.builder()
+                .ingredientId("blank-ingredient")
+                .recommendation(recommendation)
+                .rankOrder(3)
+                .ingredientName("   ")
+                .nutritionSnapshot(NutritionValues.builder().build())
+                .build();
+        RecommendationIngredient nullName = RecommendationIngredient.builder()
+                .ingredientId("null-ingredient")
+                .recommendation(recommendation)
+                .rankOrder(4)
+                .ingredientName(null)
+                .nutritionSnapshot(NutritionValues.builder().build())
+                .build();
+        RecommendationIngredient duplicateSpinach = RecommendationIngredient.builder()
+                .ingredientId("duplicate-spinach")
+                .recommendation(recommendation)
+                .rankOrder(5)
+                .ingredientName(" 시금치 ")
+                .nutritionSnapshot(NutritionValues.builder().build())
                 .build();
         RecommendationPlan refreshedPlan = planWithIngredient();
         RecommendationRes assembled = response(recommendation);
@@ -218,7 +339,13 @@ class RecommendationServiceTest {
         completeReservation();
         when(ingredientRepository.findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
                 recommendation.getRecommendationId()))
-                .thenReturn(List.of(spinach, broccoli));
+                .thenReturn(List.of(
+                        spinach,
+                        broccoli,
+                        blankName,
+                        nullName,
+                        duplicateSpinach
+                ));
         when(planningService.plan(
                 org.mockito.ArgumentMatchers.eq(user),
                 org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 8, 16)),
@@ -266,7 +393,6 @@ class RecommendationServiceTest {
         when(recommendationRepository.findOwnedByIdForUpdate(
                 recommendation.getRecommendationId(), "user-id"))
                 .thenReturn(Optional.of(recommendation));
-        reserveNewKey();
         when(ingredientRepository.findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
                 recommendation.getRecommendationId()))
                 .thenReturn(List.of(current));
@@ -336,9 +462,6 @@ class RecommendationServiceTest {
                 .thenReturn(Optional.empty(), Optional.of(completedKey));
         when(mealRepository.findOwnedByIdForUpdate(meal.getMealId(), "user-id"))
                 .thenReturn(Optional.of(meal));
-        when(idempotencyKeyRepository.reserve(
-                "same-key", "user-id", "RECOMMENDATION_CREATE", fingerprint))
-                .thenReturn(0);
         when(recommendationRepository.findByRecommendationIdAndUserUserId(
                 recommendation.getRecommendationId(), "user-id"))
                 .thenReturn(Optional.of(recommendation));
@@ -606,7 +729,8 @@ class RecommendationServiceTest {
         completeReservation();
         when(recommendationRepository.findByMealMealId(meal.getMealId()))
                 .thenReturn(Optional.empty());
-        when(planningService.plan(user, LocalDate.of(2026, 8, 16), 2)).thenReturn(plan);
+        when(planningService.plan(user, LocalDate.of(2026, 8, 16), 2, List.of()))
+                .thenReturn(plan);
         when(recommendationRepository.save(any(Recommendation.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
     }

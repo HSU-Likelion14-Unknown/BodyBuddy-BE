@@ -16,6 +16,10 @@ public interface RecommendationRepository extends JpaRepository<Recommendation, 
 
     Optional<Recommendation> findByMealMealId(String mealId);
 
+    Optional<Recommendation> findFirstByUserUserIdOrderByCreatedAtDescRecommendationIdDesc(
+            String userId
+    );
+
     Optional<Recommendation> findByRecommendationIdAndUserUserId(
             String recommendationId,
             String userId
