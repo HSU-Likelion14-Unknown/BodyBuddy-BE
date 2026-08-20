@@ -436,6 +436,7 @@ CREATE TABLE recommendation_decisions (
 
 CREATE TABLE meal_reactions (
     reaction_id CHAR(36) NOT NULL,
+    room_id CHAR(36) NOT NULL,
     meal_id CHAR(36) NOT NULL,
     user_id CHAR(36) NOT NULL,
     emoji_type VARCHAR(30) NOT NULL,
@@ -444,14 +445,21 @@ CREATE TABLE meal_reactions (
 
     PRIMARY KEY (reaction_id),
 
-    UNIQUE KEY uk_meal_reactions_meal_user_emoji (
+    UNIQUE KEY uk_meal_reactions_room_meal_user_emoji (
+        room_id,
         meal_id,
         user_id,
         emoji_type
-        ),
+    ),
 
-    INDEX idx_meal_reactions_meal (meal_id),
-    INDEX idx_meal_reactions_user (user_id),
+    INDEX idx_meal_reactions_room_meal (
+        room_id,
+        meal_id
+    ),
+
+    INDEX idx_meal_reactions_user (
+        user_id
+    ),
 
     CONSTRAINT chk_meal_reactions_emoji CHECK (
         emoji_type IN (
@@ -481,8 +489,13 @@ CREATE TABLE meal_reactions (
             'SURPRISED',
             'SAD',
             'ANGRY'
-            )
-        ),
+        )
+    ),
+
+    CONSTRAINT fk_meal_reactions_room
+        FOREIGN KEY (room_id)
+            REFERENCES rooms (room_id)
+            ON DELETE CASCADE,
 
     CONSTRAINT fk_meal_reactions_meal
         FOREIGN KEY (meal_id)
