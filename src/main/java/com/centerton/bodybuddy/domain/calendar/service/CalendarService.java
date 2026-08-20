@@ -3,6 +3,8 @@ package com.centerton.bodybuddy.domain.calendar.service;
 import com.centerton.bodybuddy.domain.auth.util.AuthValidator;
 import com.centerton.bodybuddy.domain.calendar.dto.DailyMealsRes;
 import com.centerton.bodybuddy.domain.calendar.dto.MonthlyStatsRes;
+import com.centerton.bodybuddy.domain.calendar.model.CalendarMealStatus;
+import com.centerton.bodybuddy.domain.meal.entity.MealItem;
 import com.centerton.bodybuddy.domain.meal.entity.MealNutritionSummary;
 import com.centerton.bodybuddy.domain.meal.entity.MealStatus;
 import com.centerton.bodybuddy.domain.meal.entity.NutritionValues;
@@ -12,9 +14,11 @@ import com.centerton.bodybuddy.domain.recommendation.entity.Recommendation;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationDecision;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationDecisionType;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationDish;
+import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationIngredient;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationStatus;
 import com.centerton.bodybuddy.domain.recommendation.repository.RecommendationDecisionRepository;
 import com.centerton.bodybuddy.domain.recommendation.repository.RecommendationDishRepository;
+import com.centerton.bodybuddy.domain.recommendation.repository.RecommendationIngredientRepository;
 import com.centerton.bodybuddy.domain.recommendation.repository.RecommendationRepository;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import com.centerton.bodybuddy.domain.user.repository.UserRepository;
@@ -27,10 +31,17 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,11 +52,13 @@ public class CalendarService {
             MealStatus.CONFIRMED,
             MealStatus.COMPLETED
     );
+    private static final long RECOMMENDATION_VALID_HOURS = 24L;
 
     private final UserRepository userRepository;
     private final MealNutritionSummaryRepository mealNutritionSummaryRepository;
     private final RecommendationRepository recommendationRepository;
     private final RecommendationDecisionRepository recommendationDecisionRepository;
+    private final RecommendationIngredientRepository recommendationIngredientRepository;
     private final RecommendationDishRepository recommendationDishRepository;
     private final MealItemRepository mealItemRepository;
 
@@ -63,27 +76,26 @@ public class CalendarService {
                 endUtc
         );
 
-        Map<String, List<String>> foodNamesByMealId =
-                getFoodNamesByMealId(summaries);
+        Map<String, List<String>> foodNamesByMealId = getFoodNamesByMealId(summaries);
 
         List<DailyMealsRes.MealInfo> mealInfos = summaries.stream()
-                .map(s -> {
-                    NutritionValues nutrition = s.getNutrition();
+                .map(summary -> {
+                    NutritionValues nutrition = summary.getNutrition();
 
                     return DailyMealsRes.MealInfo.builder()
-                            .mealId(s.getMealId())
-                            .directInputText(s.getMeal().getDirectInputText())
-                            .photoUrl(createPhotoUrl(s.getMeal().getPhotoObjectKey()))
+                            .mealId(summary.getMealId())
+                            .directInputText(summary.getMeal().getDirectInputText())
+                            .photoUrl(createPhotoUrl(summary.getMeal().getPhotoObjectKey()))
                             .foodNames(foodNamesByMealId.getOrDefault(
-                                    s.getMealId(),
+                                    summary.getMealId(),
                                     List.of()
                             ))
-                            .eatenAt(s.getMeal().getEatenAt())
+                            .eatenAt(summary.getMeal().getEatenAt())
                             .calories(nutrition == null ? null : nutrition.getCaloriesKcal())
                             .carbohydrate(nutrition == null ? null : nutrition.getCarbohydrateG())
                             .protein(nutrition == null ? null : nutrition.getProteinG())
                             .fat(nutrition == null ? null : nutrition.getFatG())
-                            .recommendedDishName(getTopRecommendedDishName(s.getMealId()))
+                            .recommendedDishName(getTopRecommendedDishName(summary.getMealId()))
                             .build();
                 })
                 .toList();
@@ -107,15 +119,13 @@ public class CalendarService {
 
         return mealItemRepository.findFoodNamesByMealIds(mealIds)
                 .stream()
-                .collect(
-                        Collectors.groupingBy(
-                                row -> (String) row[0],
-                                Collectors.mapping(
-                                        row -> (String) row[1],
-                                        Collectors.toList()
-                                )
+                .collect(Collectors.groupingBy(
+                        row -> (String) row[0],
+                        Collectors.mapping(
+                                row -> (String) row[1],
+                                Collectors.toList()
                         )
-                );
+                ));
     }
 
     private String createPhotoUrl(String photoObjectKey) {
@@ -135,7 +145,8 @@ public class CalendarService {
         Optional<RecommendationDecision> decision = recommendationDecisionRepository
                 .findById(recommendation.get().getRecommendationId());
 
-        if (decision.isEmpty() || decision.get().getDecision() != RecommendationDecisionType.SELECTED) {
+        if (decision.isEmpty()
+                || decision.get().getDecision() != RecommendationDecisionType.SELECTED) {
             return null;
         }
 
@@ -145,7 +156,7 @@ public class CalendarService {
                 .findAllForRecommendation(recommendation.get().getRecommendationId());
 
         return dishes.stream()
-                .filter(d -> d.getIngredient().getIngredientId().equals(selectedIngredientId))
+                .filter(dish -> dish.getIngredient().getIngredientId().equals(selectedIngredientId))
                 .findFirst()
                 .map(RecommendationDish::getDishName)
                 .orElse(null);
@@ -155,78 +166,53 @@ public class CalendarService {
     public MonthlyStatsRes getMonthlyStats(String authorization, YearMonth month) {
         User user = AuthValidator.validateAndGetUser(authorization, userRepository);
 
-        LocalDate startDate = month.atDay(1);
-        LocalDate endDate = month.plusMonths(1).atDay(1);
+        LocalDateTime monthStartAt = month.atDay(1).atStartOfDay();
+        LocalDateTime monthEndAt = month.plusMonths(1).atDay(1).atStartOfDay();
+        LocalDateTime calculationStartAt = monthStartAt.minusHours(RECOMMENDATION_VALID_HOURS);
 
-        LocalDateTime startUtc = startDate.atStartOfDay();
-        LocalDateTime endUtc = endDate.atStartOfDay();
-
-        List<MealNutritionSummary> summaries = mealNutritionSummaryRepository.findDailySummaries(
-                user.getUserId(),
-                CALENDAR_MEAL_STATUSES,
-                startUtc,
-                endUtc
-        );
-
-        List<Recommendation> recommendations =
-                recommendationRepository.findMonthlyRecommendations(
+        List<MealNutritionSummary> calculationSummaries =
+                mealNutritionSummaryRepository.findDailySummaries(
                         user.getUserId(),
-                        startDate,
-                        endDate
+                        CALENDAR_MEAL_STATUSES,
+                        calculationStartAt,
+                        monthEndAt
                 );
 
-        BigDecimal totalCalories = summaries.stream()
+        List<MealNutritionSummary> monthlySummaries = calculationSummaries.stream()
+                .filter(summary -> !summary.getMeal().getEatenAt().isBefore(monthStartAt))
+                .toList();
+
+        List<Recommendation> recommendations = recommendationRepository.findCreatedBetween(
+                user.getUserId(),
+                calculationStartAt,
+                monthEndAt
+        );
+
+        Map<String, List<MealItem>> mealItemsByMealId =
+                getMealItemsByMealId(calculationSummaries);
+
+        Map<String, Set<FoodReference>> foodsByRecommendationId =
+                getFoodsByRecommendationId(recommendations);
+
+        Map<LocalDate, List<MonthlyStatsRes.MealRecord>> recordsByDate =
+                createMealRecords(
+                        calculationSummaries,
+                        recommendations,
+                        mealItemsByMealId,
+                        foodsByRecommendationId,
+                        monthStartAt
+                );
+
+        List<MonthlyStatsRes.DayStatus> days = createDayStatuses(recordsByDate);
+
+        BigDecimal totalCalories = monthlySummaries.stream()
                 .map(MealNutritionSummary::getNutrition)
                 .filter(Objects::nonNull)
                 .map(NutritionValues::getCaloriesKcal)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        Map<LocalDate, Long> mealCountByDate = summaries.stream()
-                .collect(Collectors.groupingBy(
-                        s -> s.getMeal().getEatenAt().toLocalDate(),
-                        Collectors.counting()
-                ));
-
-        Map<LocalDate, List<Recommendation>> recommendationsByDate =
-                recommendations.stream()
-                        .collect(Collectors.groupingBy(
-                                Recommendation::getRecommendationDate
-                        ));
-
-        List<MonthlyStatsRes.DayStatus> days = mealCountByDate.entrySet()
-                .stream()
-                .sorted(Map.Entry.comparingByKey())
-                .map(entry -> {
-                    List<Recommendation> dailyRecommendations =
-                            recommendationsByDate.getOrDefault(
-                                    entry.getKey(),
-                                    List.of()
-                            );
-
-                    int selectedCount = (int) dailyRecommendations.stream()
-                            .filter(recommendation ->
-                                    recommendation.getStatus() == RecommendationStatus.SELECTED
-                            )
-                            .count();
-
-                    int unselectedCount = (int) dailyRecommendations.stream()
-                            .filter(recommendation ->
-                                    recommendation.getStatus() == RecommendationStatus.CREATED
-                                            || recommendation.getStatus() == RecommendationStatus.SKIPPED
-                            )
-                            .count();
-
-                    return MonthlyStatsRes.DayStatus.builder()
-                            .date(entry.getKey().toString())
-                            .mealCount(entry.getValue().intValue())
-                            .selectedRecommendationCount(selectedCount)
-                            .unselectedRecommendationCount(unselectedCount)
-                            .build();
-                })
-                .toList();
-
-        int recordedDays = mealCountByDate.size();
+        int recordedDays = recordsByDate.size();
 
         BigDecimal averageCalories = recordedDays == 0
                 ? BigDecimal.ZERO
@@ -243,5 +229,247 @@ public class CalendarService {
                 .recordedDays(recordedDays)
                 .days(days)
                 .build();
+    }
+
+    private Map<String, List<MealItem>> getMealItemsByMealId(
+            List<MealNutritionSummary> summaries
+    ) {
+        if (summaries.isEmpty()) {
+            return Map.of();
+        }
+
+        List<String> mealIds = summaries.stream()
+                .map(MealNutritionSummary::getMealId)
+                .toList();
+
+        return mealItemRepository.findAllByMealIds(mealIds)
+                .stream()
+                .collect(Collectors.groupingBy(item -> item.getMeal().getMealId()));
+    }
+
+    private Map<String, Set<FoodReference>> getFoodsByRecommendationId(
+            List<Recommendation> recommendations
+    ) {
+        if (recommendations.isEmpty()) {
+            return Map.of();
+        }
+
+        List<String> recommendationIds = recommendations.stream()
+                .map(Recommendation::getRecommendationId)
+                .toList();
+
+        List<RecommendationIngredient> ingredients =
+                recommendationIngredientRepository.findAllForRecommendations(recommendationIds);
+
+        List<RecommendationDish> dishes =
+                recommendationDishRepository.findAllForRecommendations(recommendationIds);
+
+        Map<String, Set<FoodReference>> result = new HashMap<>();
+
+        for (RecommendationIngredient ingredient : ingredients) {
+            String recommendationId = ingredient.getRecommendation().getRecommendationId();
+            String foodId = ingredient.getFood() == null
+                    ? null
+                    : ingredient.getFood().getFoodId();
+
+            result.computeIfAbsent(recommendationId, key -> new HashSet<>())
+                    .add(new FoodReference(
+                            foodId,
+                            normalizeFoodName(ingredient.getIngredientName())
+                    ));
+        }
+
+        for (RecommendationDish dish : dishes) {
+            String recommendationId =
+                    dish.getIngredient().getRecommendation().getRecommendationId();
+
+            String foodId = dish.getFood() == null
+                    ? null
+                    : dish.getFood().getFoodId();
+
+            result.computeIfAbsent(recommendationId, key -> new HashSet<>())
+                    .add(new FoodReference(
+                            foodId,
+                            normalizeFoodName(dish.getDishName())
+                    ));
+        }
+
+        return result;
+    }
+
+    private Map<LocalDate, List<MonthlyStatsRes.MealRecord>> createMealRecords(
+            List<MealNutritionSummary> summaries,
+            List<Recommendation> recommendations,
+            Map<String, List<MealItem>> mealItemsByMealId,
+            Map<String, Set<FoodReference>> foodsByRecommendationId,
+            LocalDateTime monthStartAt
+    ) {
+        List<MealNutritionSummary> orderedSummaries = summaries.stream()
+                .sorted(Comparator
+                        .comparing((MealNutritionSummary summary) ->
+                                summary.getMeal().getEatenAt())
+                        .thenComparing(MealNutritionSummary::getMealId))
+                .toList();
+
+        Set<String> consumedRecommendationIds = new HashSet<>();
+        Map<LocalDate, List<MonthlyStatsRes.MealRecord>> recordsByDate = new TreeMap<>();
+
+        for (MealNutritionSummary summary : orderedSummaries) {
+            LocalDateTime eatenAt = summary.getMeal().getEatenAt();
+
+            List<Recommendation> activeRecommendations = getActiveRecommendations(
+                    recommendations,
+                    consumedRecommendationIds,
+                    foodsByRecommendationId,
+                    eatenAt
+            );
+
+            List<MealItem> mealItems = mealItemsByMealId.getOrDefault(
+                    summary.getMealId(),
+                    List.of()
+            );
+
+            List<Recommendation> matchedRecommendations = activeRecommendations.stream()
+                    .filter(recommendation -> matchesRecommendation(
+                            mealItems,
+                            foodsByRecommendationId.getOrDefault(
+                                    recommendation.getRecommendationId(),
+                                    Set.of()
+                            )
+                    ))
+                    .toList();
+
+            CalendarMealStatus status;
+
+            if (activeRecommendations.isEmpty()) {
+                status = CalendarMealStatus.RECORD_ONLY;
+            } else if (matchedRecommendations.isEmpty()) {
+                status = CalendarMealStatus.RECOMMENDATION_MISSED;
+            } else {
+                status = CalendarMealStatus.RECOMMENDATION_FOLLOWED;
+
+                matchedRecommendations.stream()
+                        .map(Recommendation::getRecommendationId)
+                        .forEach(consumedRecommendationIds::add);
+            }
+
+            if (eatenAt.isBefore(monthStartAt)) {
+                continue;
+            }
+
+            MonthlyStatsRes.MealRecord record = MonthlyStatsRes.MealRecord.builder()
+                    .mealId(summary.getMealId())
+                    .eatenAt(eatenAt)
+                    .status(status)
+                    .build();
+
+            recordsByDate.computeIfAbsent(
+                    eatenAt.toLocalDate(),
+                    key -> new ArrayList<>()
+            ).add(record);
+        }
+
+        return recordsByDate;
+    }
+
+    private List<Recommendation> getActiveRecommendations(
+            List<Recommendation> recommendations,
+            Set<String> consumedRecommendationIds,
+            Map<String, Set<FoodReference>> foodsByRecommendationId,
+            LocalDateTime eatenAt
+    ) {
+        LocalDateTime validFrom = eatenAt.minusHours(RECOMMENDATION_VALID_HOURS);
+
+        return recommendations.stream()
+                .filter(recommendation ->
+                        recommendation.getStatus() != RecommendationStatus.NO_CANDIDATE)
+                .filter(recommendation ->
+                        !consumedRecommendationIds.contains(
+                                recommendation.getRecommendationId()
+                        ))
+                .filter(recommendation -> recommendation.getCreatedAt() != null)
+                .filter(recommendation ->
+                        !recommendation.getCreatedAt().isBefore(validFrom))
+                .filter(recommendation ->
+                        !recommendation.getCreatedAt().isAfter(eatenAt))
+                .filter(recommendation ->
+                        !foodsByRecommendationId.getOrDefault(
+                                recommendation.getRecommendationId(),
+                                Set.of()
+                        ).isEmpty())
+                .toList();
+    }
+
+    private boolean matchesRecommendation(
+            List<MealItem> mealItems,
+            Set<FoodReference> recommendedFoods
+    ) {
+        return mealItems.stream()
+                .anyMatch(mealItem -> recommendedFoods.stream()
+                        .anyMatch(recommendedFood ->
+                                matchesFood(mealItem, recommendedFood)));
+    }
+
+    private boolean matchesFood(
+            MealItem mealItem,
+            FoodReference recommendedFood
+    ) {
+        if (mealItem.getFoodId() != null
+                && recommendedFood.foodId() != null
+                && mealItem.getFoodId().equals(recommendedFood.foodId())) {
+            return true;
+        }
+
+        String mealFoodName = normalizeFoodName(mealItem.getFoodName());
+
+        return !mealFoodName.isBlank()
+                && mealFoodName.equals(recommendedFood.normalizedName());
+    }
+
+    private String normalizeFoodName(String foodName) {
+        if (foodName == null) {
+            return "";
+        }
+
+        return foodName.trim()
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[\\s_-]", "");
+    }
+
+    private List<MonthlyStatsRes.DayStatus> createDayStatuses(
+            Map<LocalDate, List<MonthlyStatsRes.MealRecord>> recordsByDate
+    ) {
+        return recordsByDate.entrySet()
+                .stream()
+                .map(entry -> {
+                    List<MonthlyStatsRes.MealRecord> records = entry.getValue();
+
+                    int followedCount = (int) records.stream()
+                            .filter(record ->
+                                    record.getStatus()
+                                            == CalendarMealStatus.RECOMMENDATION_FOLLOWED)
+                            .count();
+
+                    int missedCount = (int) records.stream()
+                            .filter(record ->
+                                    record.getStatus()
+                                            == CalendarMealStatus.RECOMMENDATION_MISSED)
+                            .count();
+
+                    return MonthlyStatsRes.DayStatus.builder()
+                            .date(entry.getKey().toString())
+                            .mealCount(records.size())
+                            .selectedRecommendationCount(followedCount)
+                            .unselectedRecommendationCount(missedCount)
+                            .records(records)
+                            .build();
+                })
+                .toList();
+    }
+
+    private record FoodReference(
+            String foodId,
+            String normalizedName
+    ) {
     }
 }
