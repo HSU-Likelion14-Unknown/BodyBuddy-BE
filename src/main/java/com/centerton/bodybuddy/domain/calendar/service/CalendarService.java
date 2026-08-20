@@ -31,8 +31,6 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -55,7 +53,6 @@ public class CalendarService {
             MealStatus.COMPLETED
     );
     private static final long RECOMMENDATION_VALID_HOURS = 24L;
-    private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
 
     private final UserRepository userRepository;
     private final MealNutritionSummaryRepository mealNutritionSummaryRepository;
@@ -69,8 +66,8 @@ public class CalendarService {
     public DailyMealsRes getMealsByDate(String authorization, LocalDate date) {
         User user = AuthValidator.validateAndGetUser(authorization, userRepository);
 
-        LocalDateTime startUtc = toUtcStartOfDay(date);
-        LocalDateTime endUtc = toUtcStartOfDay(date.plusDays(1));
+        LocalDateTime startUtc = CalendarTimeMapper.toUtcStartOfDay(date);
+        LocalDateTime endUtc = CalendarTimeMapper.toUtcStartOfDay(date.plusDays(1));
 
         List<MealNutritionSummary> summaries = mealNutritionSummaryRepository.findDailySummaries(
                 user.getUserId(),
@@ -93,7 +90,9 @@ public class CalendarService {
                                     summary.getMealId(),
                                     List.of()
                             ))
-                            .eatenAt(toKoreaTime(summary.getMeal().getEatenAt()))
+                            .eatenAt(CalendarTimeMapper.toKoreaOffsetDateTime(
+                                    summary.getMeal().getEatenAt()
+                            ))
                             .calories(nutrition == null ? null : nutrition.getCaloriesKcal())
                             .carbohydrate(nutrition == null ? null : nutrition.getCarbohydrateG())
                             .protein(nutrition == null ? null : nutrition.getProteinG())
@@ -173,8 +172,10 @@ public class CalendarService {
     public MonthlyStatsRes getMonthlyStats(String authorization, YearMonth month) {
         User user = AuthValidator.validateAndGetUser(authorization, userRepository);
 
-        LocalDateTime monthStartAt = toUtcStartOfDay(month.atDay(1));
-        LocalDateTime monthEndAt = toUtcStartOfDay(month.plusMonths(1).atDay(1));
+        LocalDateTime monthStartAt = CalendarTimeMapper.toUtcStartOfDay(month.atDay(1));
+        LocalDateTime monthEndAt = CalendarTimeMapper.toUtcStartOfDay(
+                month.plusMonths(1).atDay(1)
+        );
         LocalDateTime calculationStartAt = monthStartAt.minusHours(RECOMMENDATION_VALID_HOURS);
 
         List<MealNutritionSummary> calculationSummaries =
@@ -400,16 +401,14 @@ public class CalendarService {
                 continue;
             }
 
-            LocalDateTime eatenAtKorea = toKoreaTime(eatenAt);
-
             MonthlyStatsRes.MealRecord record = MonthlyStatsRes.MealRecord.builder()
                     .mealId(summary.getMealId())
-                    .eatenAt(eatenAtKorea)
+                    .eatenAt(CalendarTimeMapper.toKoreaOffsetDateTime(eatenAt))
                     .status(status)
                     .build();
 
             recordsByDate.computeIfAbsent(
-                    eatenAtKorea.toLocalDate(),
+                    CalendarTimeMapper.toKoreaDate(eatenAt),
                     key -> new ArrayList<>()
             ).add(record);
         }
@@ -510,22 +509,6 @@ public class CalendarService {
                             .build();
                 })
                 .toList();
-    }
-
-    private LocalDateTime toUtcStartOfDay(LocalDate date) {
-        return date.atStartOfDay(KOREA_ZONE)
-                .withZoneSameInstant(ZoneOffset.UTC)
-                .toLocalDateTime();
-    }
-
-    private LocalDateTime toKoreaTime(LocalDateTime utcDateTime) {
-        if (utcDateTime == null) {
-            return null;
-        }
-
-        return utcDateTime.atOffset(ZoneOffset.UTC)
-                .atZoneSameInstant(KOREA_ZONE)
-                .toLocalDateTime();
     }
 
     private record FoodReference(

@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 @Getter
@@ -34,7 +34,7 @@ public class MonthlyStatsRes {
     @Builder
     public static class MealRecord {
         private String mealId;
-        private LocalDateTime eatenAt;
+        private OffsetDateTime eatenAt;
         private CalendarMealStatus status;
     }
 }

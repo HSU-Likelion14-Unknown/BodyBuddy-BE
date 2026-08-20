@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 @Getter
@@ -20,7 +20,7 @@ public class DailyMealsRes {
         private String directInputText;
         private String photoUrl;
         private List<String> foodNames;
-        private LocalDateTime eatenAt;
+        private OffsetDateTime eatenAt;
         private BigDecimal calories;
         private BigDecimal carbohydrate;
         private BigDecimal protein;
