@@ -212,23 +212,59 @@ public class CalendarService {
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        BigDecimal totalCarbohydrate = monthlySummaries.stream()
+                .map(MealNutritionSummary::getNutrition)
+                .filter(Objects::nonNull)
+                .map(NutritionValues::getCarbohydrateG)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalProtein = monthlySummaries.stream()
+                .map(MealNutritionSummary::getNutrition)
+                .filter(Objects::nonNull)
+                .map(NutritionValues::getProteinG)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalFat = monthlySummaries.stream()
+                .map(MealNutritionSummary::getNutrition)
+                .filter(Objects::nonNull)
+                .map(NutritionValues::getFatG)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         int recordedDays = recordsByDate.size();
 
-        BigDecimal averageCalories = recordedDays == 0
-                ? BigDecimal.ZERO
-                : totalCalories.divide(
-                BigDecimal.valueOf(recordedDays),
-                2,
-                RoundingMode.HALF_UP
-        );
+        BigDecimal averageCalories = calculateAverage(totalCalories, recordedDays);
+        BigDecimal averageCarbohydrate = calculateAverage(totalCarbohydrate, recordedDays);
+        BigDecimal averageProtein = calculateAverage(totalProtein, recordedDays);
+        BigDecimal averageFat = calculateAverage(totalFat, recordedDays);
 
         return MonthlyStatsRes.builder()
                 .month(month.toString())
                 .totalCalories(totalCalories)
                 .averageCalories(averageCalories)
+                .averageCarbohydrate(averageCarbohydrate)
+                .averageProtein(averageProtein)
+                .averageFat(averageFat)
                 .recordedDays(recordedDays)
                 .days(days)
                 .build();
+    }
+
+    private BigDecimal calculateAverage(
+            BigDecimal total,
+            int recordedDays
+    ) {
+        if (recordedDays == 0) {
+            return BigDecimal.ZERO;
+        }
+
+        return total.divide(
+                BigDecimal.valueOf(recordedDays),
+                2,
+                RoundingMode.HALF_UP
+        );
     }
 
     private Map<String, List<MealItem>> getMealItemsByMealId(
