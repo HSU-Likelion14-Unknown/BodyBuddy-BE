@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,6 +21,20 @@ public interface RecommendationIngredientRepository
     findByIngredientIdAndRecommendationRecommendationId(
             String ingredientId,
             String recommendationId
+    );
+
+    @Query("""
+            select ingredient
+            from RecommendationIngredient ingredient
+            join fetch ingredient.recommendation recommendation
+            left join fetch ingredient.food
+            where recommendation.recommendationId in :recommendationIds
+            order by recommendation.createdAt,
+                     recommendation.recommendationId,
+                     ingredient.rankOrder
+            """)
+    List<RecommendationIngredient> findAllForRecommendations(
+            @Param("recommendationIds") Collection<String> recommendationIds
     );
 
     @Modifying
