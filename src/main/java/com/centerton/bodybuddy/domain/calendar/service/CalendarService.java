@@ -66,8 +66,8 @@ public class CalendarService {
     public DailyMealsRes getMealsByDate(String authorization, LocalDate date) {
         User user = AuthValidator.validateAndGetUser(authorization, userRepository);
 
-        LocalDateTime startUtc = date.atStartOfDay();
-        LocalDateTime endUtc = date.plusDays(1).atStartOfDay();
+        LocalDateTime startUtc = CalendarTimeMapper.toUtcStartOfDay(date);
+        LocalDateTime endUtc = CalendarTimeMapper.toUtcStartOfDay(date.plusDays(1));
 
         List<MealNutritionSummary> summaries = mealNutritionSummaryRepository.findDailySummaries(
                 user.getUserId(),
@@ -90,7 +90,9 @@ public class CalendarService {
                                     summary.getMealId(),
                                     List.of()
                             ))
-                            .eatenAt(summary.getMeal().getEatenAt())
+                            .eatenAt(CalendarTimeMapper.toKoreaOffsetDateTime(
+                                    summary.getMeal().getEatenAt()
+                            ))
                             .calories(nutrition == null ? null : nutrition.getCaloriesKcal())
                             .carbohydrate(nutrition == null ? null : nutrition.getCarbohydrateG())
                             .protein(nutrition == null ? null : nutrition.getProteinG())
@@ -170,8 +172,10 @@ public class CalendarService {
     public MonthlyStatsRes getMonthlyStats(String authorization, YearMonth month) {
         User user = AuthValidator.validateAndGetUser(authorization, userRepository);
 
-        LocalDateTime monthStartAt = month.atDay(1).atStartOfDay();
-        LocalDateTime monthEndAt = month.plusMonths(1).atDay(1).atStartOfDay();
+        LocalDateTime monthStartAt = CalendarTimeMapper.toUtcStartOfDay(month.atDay(1));
+        LocalDateTime monthEndAt = CalendarTimeMapper.toUtcStartOfDay(
+                month.plusMonths(1).atDay(1)
+        );
         LocalDateTime calculationStartAt = monthStartAt.minusHours(RECOMMENDATION_VALID_HOURS);
 
         List<MealNutritionSummary> calculationSummaries =
@@ -399,12 +403,12 @@ public class CalendarService {
 
             MonthlyStatsRes.MealRecord record = MonthlyStatsRes.MealRecord.builder()
                     .mealId(summary.getMealId())
-                    .eatenAt(eatenAt)
+                    .eatenAt(CalendarTimeMapper.toKoreaOffsetDateTime(eatenAt))
                     .status(status)
                     .build();
 
             recordsByDate.computeIfAbsent(
-                    eatenAt.toLocalDate(),
+                    CalendarTimeMapper.toKoreaDate(eatenAt),
                     key -> new ArrayList<>()
             ).add(record);
         }
