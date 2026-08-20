@@ -37,6 +37,23 @@ public class IngredientRankingService {
 
     @Transactional(readOnly = true)
     public List<RankedIngredient> rank(User user, NutritionGapResult gapResult, int limit) {
+        return rank(
+                user,
+                gapResult,
+                limit,
+                List.of(),
+                BigDecimal.ZERO
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<RankedIngredient> rank(
+            User user,
+            NutritionGapResult gapResult,
+            int limit,
+            Collection<String> excludedIngredientNames,
+            BigDecimal minimumTargetCoverageRatio
+    ) {
         if (!canRank(user, gapResult, limit)) {
             return List.of();
         }
@@ -45,8 +62,8 @@ public class IngredientRankingService {
                 gapResult,
                 limit,
                 foodNutritionRepository.findRecommendationCandidates(),
-                List.of(),
-                BigDecimal.ZERO
+                excludedIngredientNames,
+                minimumTargetCoverageRatio
         );
     }
 

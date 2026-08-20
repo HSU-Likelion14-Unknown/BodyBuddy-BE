@@ -16,4 +16,9 @@ public class NoOpAiIngredientRecommendationClient implements AiIngredientRecomme
     public List<AiIngredientCandidate> recommend(AiIngredientRecommendationInput input) {
         return List.of();
     }
+
+    @Override
+    public List<AiDishCandidate> recommendDishes(AiDishRecommendationInput input) {
+        return List.of();
+    }
 }

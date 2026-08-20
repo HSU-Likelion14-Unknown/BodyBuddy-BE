@@ -4,6 +4,7 @@ import com.centerton.bodybuddy.domain.food.entity.Food;
 import com.centerton.bodybuddy.domain.food.service.FoodNameNormalizer;
 import com.centerton.bodybuddy.domain.meal.entity.NutritionValues;
 import com.centerton.bodybuddy.domain.recommendation.client.AiDishCandidate;
+import com.centerton.bodybuddy.domain.recommendation.client.AiDishRecommendationInput;
 import com.centerton.bodybuddy.domain.recommendation.client.AiIngredientCandidate;
 import com.centerton.bodybuddy.domain.recommendation.client.AiIngredientRecommendationClient;
 import com.centerton.bodybuddy.domain.recommendation.client.AiIngredientRecommendationInput;
@@ -94,6 +95,31 @@ public class AiIngredientFallbackService {
         return List.copyOf(result);
     }
 
+    public List<RecommendedDish> completeDishes(User user, RankedIngredient ingredient) {
+        if (user == null || ingredient == null || ingredient.ingredientName() == null
+                || ingredient.ingredientName().isBlank()
+                || !ingredientSafetyPolicy.canEvaluate(user.getAllergyCodes())) {
+            return List.of();
+        }
+        List<AiDishCandidate> candidates;
+        try {
+            candidates = client.recommendDishes(new AiDishRecommendationInput(
+                    ingredient.ingredientName().trim(),
+                    user.getAllergyCodes(),
+                    user.getDislikedFoods()
+            ));
+        } catch (RuntimeException exception) {
+            log.warn("AI 활용 요리 보완에 실패했습니다.", exception);
+            return List.of();
+        }
+        List<RecommendedDish> dishes = safeDishes(
+                user,
+                candidates,
+                ingredient.ingredientName()
+        );
+        return dishes;
+    }
+
     private IngredientDishRecommendation validateCandidate(
             User user,
             NutritionGapResult gapResult,
@@ -143,7 +169,11 @@ public class AiIngredientFallbackService {
             return null;
         }
 
-        List<RecommendedDish> dishes = safeDishes(user, candidate.dishes());
+        List<RecommendedDish> dishes = safeDishes(
+                user,
+                candidate.dishes(),
+                candidate.ingredientName()
+        );
         if (dishes.size() < 2) {
             return null;
         }
@@ -160,7 +190,9 @@ public class AiIngredientFallbackService {
         return new IngredientDishRecommendation(ranked, dishes);
     }
 
-    private List<RecommendedDish> safeDishes(User user, List<AiDishCandidate> candidates) {
+    private List<RecommendedDish> safeDishes(User user,
+                                             List<AiDishCandidate> candidates,
+                                             String requiredIngredientName) {
         if (candidates == null) {
             return List.of();
         }
@@ -168,6 +200,10 @@ public class AiIngredientFallbackService {
         List<RecommendedDish> result = candidates.stream()
                 .filter(java.util.Objects::nonNull)
                 .filter(candidate -> candidate.dishName() != null)
+                .filter(candidate -> includesIngredient(
+                        candidate.ingredientNames(),
+                        requiredIngredientName
+                ))
                 .filter(candidate -> names.add(FoodNameNormalizer.normalizeLookupName(
                         candidate.dishName()
                 )))
@@ -202,6 +238,21 @@ public class AiIngredientFallbackService {
             ));
         }
         return List.copyOf(ranked);
+    }
+
+    private boolean includesIngredient(List<String> ingredientNames,
+                                       String requiredIngredientName) {
+        if (ingredientNames == null || requiredIngredientName == null) {
+            return false;
+        }
+        String required = FoodNameNormalizer.normalizeLookupName(requiredIngredientName);
+        if (required.isBlank()) {
+            return false;
+        }
+        return ingredientNames.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(FoodNameNormalizer::normalizeLookupName)
+                .anyMatch(required::equals);
     }
 
     private BigDecimal overallCoverage(NutritionValues nutrition,

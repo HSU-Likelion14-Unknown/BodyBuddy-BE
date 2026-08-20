@@ -32,6 +32,25 @@ public class RecommendationNutritionAnalysisService {
     }
 
     @Transactional(readOnly = true)
+    public RecommendationNutritionAnalysis analyze(
+            User user,
+            LocalDate date,
+            int limit,
+            Collection<String> excludedIngredientNames,
+            BigDecimal minimumTargetCoverageRatio
+    ) {
+        NutritionGapResult gap = calculateGap(user, date);
+        List<RankedIngredient> ingredients = ingredientRankingService.rank(
+                user,
+                gap,
+                limit,
+                excludedIngredientNames,
+                minimumTargetCoverageRatio
+        );
+        return new RecommendationNutritionAnalysis(gap, ingredients);
+    }
+
+    @Transactional(readOnly = true)
     public RecommendationNutritionAnalysis analyzeMappable(
             User user,
             LocalDate date,
