@@ -315,6 +315,10 @@ public class RecommendationService {
                 .findAllByRecommendationRecommendationIdOrderByRankOrderAsc(recommendationId)
                 .stream()
                 .map(RecommendationIngredient::getIngredientName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(name -> !name.isBlank())
+                .distinct()
                 .toList();
     }
 

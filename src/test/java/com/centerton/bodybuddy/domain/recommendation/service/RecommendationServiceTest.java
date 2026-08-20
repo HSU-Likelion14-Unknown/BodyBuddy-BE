@@ -303,9 +303,30 @@ class RecommendationServiceTest {
                 .recommendation(recommendation)
                 .food(food("broccoli-food"))
                 .rankOrder(2)
-                .ingredientName("브로콜리")
+                .ingredientName("  브로콜리  ")
                 .reason("철 보완에 도움이 되는 원재료입니다.")
                 .nutritionSnapshot(NutritionValues.builder().ironMg(value("1.2")).build())
+                .build();
+        RecommendationIngredient blankName = RecommendationIngredient.builder()
+                .ingredientId("blank-ingredient")
+                .recommendation(recommendation)
+                .rankOrder(3)
+                .ingredientName("   ")
+                .nutritionSnapshot(NutritionValues.builder().build())
+                .build();
+        RecommendationIngredient nullName = RecommendationIngredient.builder()
+                .ingredientId("null-ingredient")
+                .recommendation(recommendation)
+                .rankOrder(4)
+                .ingredientName(null)
+                .nutritionSnapshot(NutritionValues.builder().build())
+                .build();
+        RecommendationIngredient duplicateSpinach = RecommendationIngredient.builder()
+                .ingredientId("duplicate-spinach")
+                .recommendation(recommendation)
+                .rankOrder(5)
+                .ingredientName(" 시금치 ")
+                .nutritionSnapshot(NutritionValues.builder().build())
                 .build();
         RecommendationPlan refreshedPlan = planWithIngredient();
         RecommendationRes assembled = response(recommendation);
@@ -318,7 +339,13 @@ class RecommendationServiceTest {
         completeReservation();
         when(ingredientRepository.findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
                 recommendation.getRecommendationId()))
-                .thenReturn(List.of(spinach, broccoli));
+                .thenReturn(List.of(
+                        spinach,
+                        broccoli,
+                        blankName,
+                        nullName,
+                        duplicateSpinach
+                ));
         when(planningService.plan(
                 org.mockito.ArgumentMatchers.eq(user),
                 org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 8, 16)),
