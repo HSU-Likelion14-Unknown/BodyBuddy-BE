@@ -328,6 +328,31 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/MonthlyNutritionResponse'}
         '400': {$ref: '#/components/responses/BadRequest'}
+  /calendar/meals/{mealId}/image:
+    patch:
+      tags: [Calendar]
+      summary: 캘린더 식사 사진 수정
+      parameters:
+        - name: mealId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image: {type: string, format: binary}
+      responses:
+        '200':
+          description: 사진 수정 성공
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CalendarMealImageUpdateResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /rooms:
     post:
       tags: [Room]
@@ -733,6 +758,12 @@ components:
         date: {type: string, format: date}
         mealCount: {type: integer, minimum: 0}
         meals: {type: array, items: {$ref: '#/components/schemas/MealDetailResponse'}}
+    CalendarMealImageUpdateResponse:
+      type: object
+      required: [mealId, photoUrl]
+      properties:
+        mealId: {type: string, format: uuid}
+        photoUrl: {type: string}
     MonthlyNutritionResponse:
       type: object
       required: [year, month, recordedDayCount, mealCount, totals, dailyAverage, days]

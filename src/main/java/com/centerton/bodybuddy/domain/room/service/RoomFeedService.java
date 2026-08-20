@@ -182,6 +182,10 @@ public class RoomFeedService {
             return null;
         }
 
+        if (photoObjectKey.startsWith("/")) {
+            return photoObjectKey;
+        }
+
         return "/api/v1/meals/images/"
                 + photoObjectKey;
     }

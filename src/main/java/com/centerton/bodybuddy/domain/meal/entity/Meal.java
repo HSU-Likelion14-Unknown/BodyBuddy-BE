@@ -112,4 +112,9 @@ public class Meal extends BaseEntity {
         this.eatenAt = eatenAt;
     }
 
+    public void updatePhoto(String photoUrl) {
+        this.photoObjectKey = photoUrl;
+        this.imageSource = ImageSource.GALLERY;
+    }
+
 }

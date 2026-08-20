@@ -1,14 +1,18 @@
 package com.centerton.bodybuddy.domain.calendar.controller;
 
+import com.centerton.bodybuddy.domain.calendar.dto.CalendarMealImageUpdateRes;
 import com.centerton.bodybuddy.domain.calendar.dto.DailyMealsRes;
 import com.centerton.bodybuddy.domain.calendar.dto.MonthlyStatsRes;
+import com.centerton.bodybuddy.domain.calendar.service.CalendarMealImageService;
 import com.centerton.bodybuddy.domain.calendar.service.CalendarService;
 import com.centerton.bodybuddy.global.response.SuccessResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -19,6 +23,7 @@ import java.time.YearMonth;
 public class CalendarController {
 
     private final CalendarService calendarService;
+    private final CalendarMealImageService calendarMealImageService;
 
     @GetMapping("/days/{date}")
     public ResponseEntity<SuccessResponse<DailyMealsRes>> getMealsByDate(
@@ -36,5 +41,19 @@ public class CalendarController {
     ) {
         MonthlyStatsRes response = calendarService.getMonthlyStats(authorization, month);
         return ResponseEntity.status(HttpStatus.OK).body(SuccessResponse.from(response));
+    }
+
+    @PatchMapping(value = "/meals/{mealId}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<SuccessResponse<CalendarMealImageUpdateRes>> updateMealImage(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String mealId,
+            @RequestParam("image") MultipartFile image
+    ) {
+        CalendarMealImageUpdateRes response = calendarMealImageService.updateImage(
+                authorization,
+                mealId,
+                image
+        );
+        return ResponseEntity.ok(SuccessResponse.from(response));
     }
 }
