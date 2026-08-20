@@ -17,6 +17,7 @@ public class RoomMembersRes {
     public static class MemberInfo {
         private String userId;
         private String nickname;
+        private String profileImageUrl;
         private LocalDateTime joinedAt;
     }
 }

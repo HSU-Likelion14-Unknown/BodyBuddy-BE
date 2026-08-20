@@ -16,6 +16,7 @@ public class MyRoomsRes {
     public static class RoomInfo {
         private String roomId;
         private String roomName;
+        private String coverImageUrl;
         private LocalDateTime joinedAt;
     }
 }
