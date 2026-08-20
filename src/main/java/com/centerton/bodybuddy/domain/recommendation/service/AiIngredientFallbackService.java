@@ -117,7 +117,7 @@ public class AiIngredientFallbackService {
                 candidates,
                 ingredient.ingredientName()
         );
-        return dishes.size() < 2 ? List.of() : dishes;
+        return dishes;
     }
 
     private IngredientDishRecommendation validateCandidate(
@@ -252,10 +252,7 @@ public class AiIngredientFallbackService {
         return ingredientNames.stream()
                 .filter(java.util.Objects::nonNull)
                 .map(FoodNameNormalizer::normalizeLookupName)
-                .anyMatch(name -> !name.isBlank()
-                        && (name.equals(required)
-                        || name.contains(required)
-                        || required.contains(name)));
+                .anyMatch(required::equals);
     }
 
     private BigDecimal overallCoverage(NutritionValues nutrition,

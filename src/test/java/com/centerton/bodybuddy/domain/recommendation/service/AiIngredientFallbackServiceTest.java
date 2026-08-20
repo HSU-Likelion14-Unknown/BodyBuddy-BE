@@ -122,6 +122,37 @@ class AiIngredientFallbackServiceTest {
         assertThat(inputCaptor.getValue().ingredientName()).isEqualTo("시금치");
     }
 
+    @Test
+    void requiresExactNormalizedIngredientNameWhenCompletingDishes() {
+        when(client.recommendDishes(any(AiDishRecommendationInput.class)))
+                .thenReturn(List.of(
+                        new AiDishCandidate("콩나물국", List.of("콩나물"), List.of()),
+                        new AiDishCandidate("렌틸콩샐러드", List.of("렌틸콩"), List.of()),
+                        new AiDishCandidate("콩조림", List.of("콩"), List.of())
+                ));
+        User user = User.builder()
+                .userId("user-id")
+                .allergyCodes(List.of())
+                .dislikedFoods(List.of())
+                .build();
+        RankedIngredient ingredient = new RankedIngredient(
+                "soy-food",
+                "콩",
+                1,
+                TargetNutrient.IRON,
+                value("2.4"),
+                value("0.3"),
+                value("0.5"),
+                NutritionValues.builder().ironMg(value("2.4")).build()
+        );
+
+        List<RecommendedDish> result = service.completeDishes(user, ingredient);
+
+        assertThat(result)
+                .extracting(RecommendedDish::dishName)
+                .containsExactly("콩조림");
+    }
+
     private AiIngredientCandidate candidate(String name, String ironMg) {
         return new AiIngredientCandidate(
                 name,

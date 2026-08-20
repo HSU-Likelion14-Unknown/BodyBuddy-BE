@@ -1,5 +1,6 @@
 package com.centerton.bodybuddy.domain.recommendation.service;
 
+import com.centerton.bodybuddy.domain.food.service.FoodNameNormalizer;
 import com.centerton.bodybuddy.domain.recommendation.config.RecommendationPolicyProperties;
 import com.centerton.bodybuddy.domain.recommendation.model.IngredientDishRecommendation;
 import com.centerton.bodybuddy.domain.recommendation.model.RankedIngredient;
@@ -9,7 +10,6 @@ import com.centerton.bodybuddy.domain.recommendation.model.RecommendedDish;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -31,12 +31,10 @@ public class RecommendationPlanningService {
     private final AiIngredientFallbackService aiFallbackService;
     private final RecommendationPolicyProperties properties;
 
-    @Transactional(readOnly = true)
     public RecommendationPlan plan(User user, LocalDate date, int ingredientLimit) {
         return plan(user, date, ingredientLimit, List.of());
     }
 
-    @Transactional(readOnly = true)
     public RecommendationPlan plan(User user, LocalDate date, int ingredientLimit,
                                    Collection<String> excludedIngredientNames) {
         int safeLimit = Math.max(0, Math.min(ingredientLimit, MAX_RECOMMENDED_INGREDIENTS));
@@ -109,7 +107,10 @@ public class RecommendationPlanningService {
             );
             if (dishes.size() < 2 && aiAttempts < MAX_AI_DISH_COMPLETION_ATTEMPTS) {
                 aiAttempts++;
-                dishes = aiFallbackService.completeDishes(user, candidate);
+                dishes = mergeDishes(
+                        dishes,
+                        aiFallbackService.completeDishes(user, candidate)
+                );
             }
             if (dishes.size() < 2) {
                 continue;
@@ -120,5 +121,46 @@ public class RecommendationPlanningService {
             }
         }
         return result;
+    }
+
+    private List<RecommendedDish> mergeDishes(
+            List<RecommendedDish> catalogDishes,
+            List<RecommendedDish> aiDishes
+    ) {
+        List<RecommendedDish> merged = new ArrayList<>();
+        Set<String> normalizedNames = new HashSet<>();
+        addUniqueDishes(merged, normalizedNames, catalogDishes);
+        addUniqueDishes(merged, normalizedNames, aiDishes);
+
+        List<RecommendedDish> ranked = new ArrayList<>();
+        for (int index = 0; index < Math.min(3, merged.size()); index++) {
+            RecommendedDish dish = merged.get(index);
+            ranked.add(new RecommendedDish(
+                    dish.dishId(),
+                    dish.foodId(),
+                    dish.dishName(),
+                    index + 1
+            ));
+        }
+        return List.copyOf(ranked);
+    }
+
+    private void addUniqueDishes(
+            List<RecommendedDish> target,
+            Set<String> normalizedNames,
+            List<RecommendedDish> candidates
+    ) {
+        if (candidates == null) {
+            return;
+        }
+        for (RecommendedDish dish : candidates) {
+            if (dish == null || dish.dishName() == null) {
+                continue;
+            }
+            String normalizedName = FoodNameNormalizer.normalizeLookupName(dish.dishName());
+            if (!normalizedName.isBlank() && normalizedNames.add(normalizedName)) {
+                target.add(dish);
+            }
+        }
     }
 }

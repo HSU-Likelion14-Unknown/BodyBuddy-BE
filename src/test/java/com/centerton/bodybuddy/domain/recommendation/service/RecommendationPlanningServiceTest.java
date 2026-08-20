@@ -78,6 +78,39 @@ class RecommendationPlanningServiceTest {
     }
 
     @Test
+    void preservesSingleCatalogDishAndAddsOnlyUniqueAiDishes() {
+        User user = User.builder().userId("user-id").build();
+        LocalDate date = LocalDate.of(2026, 8, 16);
+        NutritionGapResult gap = gap(TargetNutrient.IRON);
+        RankedIngredient spinach = ranked("spinach", "시금치", 1);
+        RecommendedDish catalogDish = new RecommendedDish(
+                "dish-id", "food-id", "시금치무침", 1
+        );
+        when(properties.minimumTargetCoverageRatio()).thenReturn(value("0.20"));
+        when(nutritionAnalysisService.analyze(
+                user, date, 12, List.of(), value("0.20")))
+                .thenReturn(new RecommendationNutritionAnalysis(gap, List.of(spinach)));
+        when(dishMappingService.findSafeDishes(user, spinach))
+                .thenReturn(List.of(catalogDish));
+        when(aiFallbackService.completeDishes(user, spinach)).thenReturn(List.of(
+                new RecommendedDish(null, null, "시금치 무침", 1),
+                new RecommendedDish(null, null, "시금치국", 2)
+        ));
+
+        RecommendationPlan result = planningService.plan(user, date, 1);
+
+        assertThat(result.ingredients()).hasSize(1);
+        assertThat(result.ingredients().getFirst().dishes())
+                .extracting(RecommendedDish::dishName)
+                .containsExactly("시금치무침", "시금치국");
+        assertThat(result.ingredients().getFirst().dishes().getFirst().dishId())
+                .isEqualTo("dish-id");
+        assertThat(result.ingredients().getFirst().dishes())
+                .extracting(RecommendedDish::rank)
+                .containsExactly(1, 2);
+    }
+
+    @Test
     void usesFullAiFallbackWhenCatalogCandidatesCannotFillRequestedCount() {
         User user = User.builder().userId("user-id").build();
         LocalDate date = LocalDate.of(2026, 8, 16);
