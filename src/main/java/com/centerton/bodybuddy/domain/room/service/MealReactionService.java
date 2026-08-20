@@ -8,6 +8,7 @@ import com.centerton.bodybuddy.domain.room.dto.MealReactionsUpdateReq;
 import com.centerton.bodybuddy.domain.room.dto.MealReactionsUpdateRes;
 import com.centerton.bodybuddy.domain.room.entity.MealReaction;
 import com.centerton.bodybuddy.domain.room.entity.ReactionEmoji;
+import com.centerton.bodybuddy.domain.room.entity.Room;
 import com.centerton.bodybuddy.domain.room.exception.RoomErrorCode;
 import com.centerton.bodybuddy.domain.room.repository.MealReactionRepository;
 import com.centerton.bodybuddy.domain.room.repository.RoomMemberRepository;
@@ -45,7 +46,7 @@ public class MealReactionService {
                 userRepository
         );
 
-        validateRoomMember(roomId, requester.getUserId());
+        Room room = validateRoomMember(roomId, requester.getUserId());
 
         List<ReactionEmoji> requestedEmojis =
                 validateAndNormalize(request.emojiTypes());
@@ -60,13 +61,14 @@ public class MealReactionService {
         validateSharedRoomMeal(roomId, meal);
 
         replaceMyReactions(
+                room,
                 meal,
                 requester,
                 requestedEmojis
         );
 
         List<MealReactionsUpdateRes.ReactionCount> counts =
-                getUpdateReactionCounts(mealId);
+                getUpdateReactionCounts(roomId, mealId);
 
         return MealReactionsUpdateRes.builder()
                 .roomId(roomId)
@@ -99,10 +101,14 @@ public class MealReactionService {
         validateSharedRoomMeal(roomId, meal);
 
         List<ReactionEmoji> myReactions =
-                getMyReactions(mealId, requester.getUserId());
+                getMyReactions(
+                        roomId,
+                        mealId,
+                        requester.getUserId()
+                );
 
         List<MealReactionsRes.ReactionCount> counts =
-                getReactionCounts(mealId);
+                getReactionCounts(roomId, mealId);
 
         return MealReactionsRes.builder()
                 .roomId(roomId)
@@ -112,15 +118,16 @@ public class MealReactionService {
                 .build();
     }
 
-    private void validateRoomMember(
+    private Room validateRoomMember(
             String roomId,
             String requesterId
     ) {
-        if (!roomRepository.existsById(roomId)) {
-            throw new BaseException(
-                    RoomErrorCode.ROOM_NOT_FOUND
-            );
-        }
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() ->
+                        new BaseException(
+                                RoomErrorCode.ROOM_NOT_FOUND
+                        )
+                );
 
         if (!roomMemberRepository.existsByRoomIdAndUserId(
                 roomId,
@@ -130,6 +137,8 @@ public class MealReactionService {
                     RoomErrorCode.NOT_ROOM_MEMBER
             );
         }
+
+        return room;
     }
 
     private List<ReactionEmoji> validateAndNormalize(
@@ -170,11 +179,13 @@ public class MealReactionService {
     }
 
     private void replaceMyReactions(
+            Room room,
             Meal meal,
             User requester,
             List<ReactionEmoji> emojiTypes
     ) {
-        mealReactionRepository.deleteAllByMealIdAndUserId(
+        mealReactionRepository.deleteAllByRoomIdAndMealIdAndUserId(
+                room.getRoomId(),
                 meal.getMealId(),
                 requester.getUserId()
         );
@@ -185,6 +196,7 @@ public class MealReactionService {
 
         List<MealReaction> reactions = emojiTypes.stream()
                 .map(emojiType -> MealReaction.create(
+                        room,
                         meal,
                         requester,
                         emojiType
@@ -195,11 +207,13 @@ public class MealReactionService {
     }
 
     private List<ReactionEmoji> getMyReactions(
+            String roomId,
             String mealId,
             String userId
     ) {
         return mealReactionRepository
-                .findAllByMealMealIdAndUserUserIdOrderByEmojiTypeAsc(
+                .findAllByRoomRoomIdAndMealMealIdAndUserUserIdOrderByEmojiTypeAsc(
+                        roomId,
                         mealId,
                         userId
                 )
@@ -209,9 +223,15 @@ public class MealReactionService {
     }
 
     private List<MealReactionsUpdateRes.ReactionCount>
-    getUpdateReactionCounts(String mealId) {
+    getUpdateReactionCounts(
+            String roomId,
+            String mealId
+    ) {
         return mealReactionRepository
-                .countByMealIdGroupByEmojiType(mealId)
+                .countByRoomIdAndMealIdGroupByEmojiType(
+                        roomId,
+                        mealId
+                )
                 .stream()
                 .map(row ->
                         MealReactionsUpdateRes.ReactionCount.builder()
@@ -223,9 +243,15 @@ public class MealReactionService {
     }
 
     private List<MealReactionsRes.ReactionCount>
-    getReactionCounts(String mealId) {
+    getReactionCounts(
+            String roomId,
+            String mealId
+    ) {
         return mealReactionRepository
-                .countByMealIdGroupByEmojiType(mealId)
+                .countByRoomIdAndMealIdGroupByEmojiType(
+                        roomId,
+                        mealId
+                )
                 .stream()
                 .map(row ->
                         MealReactionsRes.ReactionCount.builder()

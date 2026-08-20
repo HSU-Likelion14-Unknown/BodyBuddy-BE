@@ -17,8 +17,9 @@ import java.util.UUID;
         name = "meal_reactions",
         uniqueConstraints = {
                 @UniqueConstraint(
-                        name = "uk_meal_reactions_meal_user_emoji",
+                        name = "uk_meal_reactions_room_meal_user_emoji",
                         columnNames = {
+                                "room_id",
                                 "meal_id",
                                 "user_id",
                                 "emoji_type"
@@ -27,8 +28,8 @@ import java.util.UUID;
         },
         indexes = {
                 @Index(
-                        name = "idx_meal_reactions_meal",
-                        columnList = "meal_id"
+                        name = "idx_meal_reactions_room_meal",
+                        columnList = "room_id, meal_id"
                 ),
                 @Index(
                         name = "idx_meal_reactions_user",
@@ -47,6 +48,10 @@ public class MealReaction extends BaseEntity {
     private String reactionId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "room_id", nullable = false)
+    private Room room;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "meal_id", nullable = false)
     private Meal meal;
 
@@ -59,12 +64,14 @@ public class MealReaction extends BaseEntity {
     private ReactionEmoji emojiType;
 
     public static MealReaction create(
+            Room room,
             Meal meal,
             User user,
             ReactionEmoji emojiType
     ) {
         return MealReaction.builder()
                 .reactionId(UUID.randomUUID().toString())
+                .room(room)
                 .meal(meal)
                 .user(user)
                 .emojiType(emojiType)
