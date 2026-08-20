@@ -461,6 +461,10 @@ CREATE TABLE meal_reactions (
         user_id
     ),
 
+    INDEX idx_meal_reactions_meal (
+        meal_id
+    ),
+
     CONSTRAINT chk_meal_reactions_emoji CHECK (
         emoji_type IN (
             'FIRE',

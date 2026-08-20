@@ -5,6 +5,7 @@ import com.centerton.bodybuddy.domain.calendar.dto.DailyMealsRes;
 import com.centerton.bodybuddy.domain.calendar.dto.MonthlyStatsRes;
 import com.centerton.bodybuddy.domain.meal.entity.MealNutritionSummary;
 import com.centerton.bodybuddy.domain.meal.entity.MealStatus;
+import com.centerton.bodybuddy.domain.meal.entity.NutritionValues;
 import com.centerton.bodybuddy.domain.meal.repository.MealItemRepository;
 import com.centerton.bodybuddy.domain.meal.repository.MealNutritionSummaryRepository;
 import com.centerton.bodybuddy.domain.recommendation.entity.Recommendation;
@@ -60,21 +61,25 @@ public class CalendarService {
                 getFoodNamesByMealId(summaries);
 
         List<DailyMealsRes.MealInfo> mealInfos = summaries.stream()
-                .map(s -> DailyMealsRes.MealInfo.builder()
-                        .mealId(s.getMealId())
-                        .directInputText(s.getMeal().getDirectInputText())
-                        .photoUrl(createPhotoUrl(s.getMeal().getPhotoObjectKey()))
-                        .foodNames(foodNamesByMealId.getOrDefault(
-                                s.getMealId(),
-                                List.of()
-                        ))
-                        .eatenAt(s.getMeal().getEatenAt())
-                        .calories(s.getNutrition().getCaloriesKcal())
-                        .carbohydrate(s.getNutrition().getCarbohydrateG())
-                        .protein(s.getNutrition().getProteinG())
-                        .fat(s.getNutrition().getFatG())
-                        .recommendedDishName(getTopRecommendedDishName(s.getMealId()))
-                        .build())
+                .map(s -> {
+                    NutritionValues nutrition = s.getNutrition();
+
+                    return DailyMealsRes.MealInfo.builder()
+                            .mealId(s.getMealId())
+                            .directInputText(s.getMeal().getDirectInputText())
+                            .photoUrl(createPhotoUrl(s.getMeal().getPhotoObjectKey()))
+                            .foodNames(foodNamesByMealId.getOrDefault(
+                                    s.getMealId(),
+                                    List.of()
+                            ))
+                            .eatenAt(s.getMeal().getEatenAt())
+                            .calories(nutrition == null ? null : nutrition.getCaloriesKcal())
+                            .carbohydrate(nutrition == null ? null : nutrition.getCarbohydrateG())
+                            .protein(nutrition == null ? null : nutrition.getProteinG())
+                            .fat(nutrition == null ? null : nutrition.getFatG())
+                            .recommendedDishName(getTopRecommendedDishName(s.getMealId()))
+                            .build();
+                })
                 .toList();
 
         return DailyMealsRes.builder()
@@ -155,7 +160,9 @@ public class CalendarService {
         );
 
         BigDecimal totalCalories = summaries.stream()
-                .map(s -> s.getNutrition().getCaloriesKcal())
+                .map(MealNutritionSummary::getNutrition)
+                .filter(Objects::nonNull)
+                .map(NutritionValues::getCaloriesKcal)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
