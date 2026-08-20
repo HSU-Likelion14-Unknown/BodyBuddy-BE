@@ -14,6 +14,17 @@ public interface MealItemRepository extends JpaRepository<MealItem, String> {
     void deleteAllByMealMealId(String mealId);
 
     @Query("""
+            select item
+            from MealItem item
+            join fetch item.meal meal
+            where meal.mealId in :mealIds
+            order by meal.eatenAt, meal.mealId, item.sortOrder
+            """)
+    List<MealItem> findAllByMealIds(
+            @Param("mealIds") Collection<String> mealIds
+    );
+
+    @Query("""
             select
                 item.meal.mealId,
                 item.foodName
