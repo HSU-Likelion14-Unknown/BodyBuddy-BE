@@ -28,7 +28,7 @@ public class ImageStorage {
             Path destination = directory.resolve(fileName);
             file.transferTo(destination);
 
-            return "/" + rootDir + "/" + fileName;
+            return "/uploads/" + fileName;
         } catch (IOException e) {
             log.error("이미지 저장 실패", e);
             throw new IllegalStateException("이미지 저장에 실패했습니다.", e);
