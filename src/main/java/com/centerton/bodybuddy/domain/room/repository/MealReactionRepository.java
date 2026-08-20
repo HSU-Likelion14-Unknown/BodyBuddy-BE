@@ -13,16 +13,19 @@ public interface MealReactionRepository extends JpaRepository<MealReaction, Stri
     @Modifying(flushAutomatically = true)
     @Query("""
             delete from MealReaction reaction
-            where reaction.meal.mealId = :mealId
+            where reaction.room.roomId = :roomId
+              and reaction.meal.mealId = :mealId
               and reaction.user.userId = :userId
             """)
-    void deleteAllByMealIdAndUserId(
+    void deleteAllByRoomIdAndMealIdAndUserId(
+            @Param("roomId") String roomId,
             @Param("mealId") String mealId,
             @Param("userId") String userId
     );
 
     List<MealReaction>
-    findAllByMealMealIdAndUserUserIdOrderByEmojiTypeAsc(
+    findAllByRoomRoomIdAndMealMealIdAndUserUserIdOrderByEmojiTypeAsc(
+            String roomId,
             String mealId,
             String userId
     );
@@ -32,11 +35,13 @@ public interface MealReactionRepository extends JpaRepository<MealReaction, Stri
                 reaction.emojiType,
                 count(reaction)
             from MealReaction reaction
-            where reaction.meal.mealId = :mealId
+            where reaction.room.roomId = :roomId
+              and reaction.meal.mealId = :mealId
             group by reaction.emojiType
             order by reaction.emojiType
             """)
-    List<Object[]> countByMealIdGroupByEmojiType(
+    List<Object[]> countByRoomIdAndMealIdGroupByEmojiType(
+            @Param("roomId") String roomId,
             @Param("mealId") String mealId
     );
 }
