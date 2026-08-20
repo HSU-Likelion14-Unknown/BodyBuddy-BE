@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,6 +33,20 @@ public interface RecommendationRepository extends JpaRepository<Recommendation, 
             @Param("userId") String userId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
+    );
+
+    @Query("""
+            select recommendation
+            from Recommendation recommendation
+            where recommendation.user.userId = :userId
+              and recommendation.createdAt >= :startAt
+              and recommendation.createdAt < :endAt
+            order by recommendation.createdAt, recommendation.recommendationId
+            """)
+    List<Recommendation> findCreatedBetween(
+            @Param("userId") String userId,
+            @Param("startAt") LocalDateTime startAt,
+            @Param("endAt") LocalDateTime endAt
     );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

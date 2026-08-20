@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface RecommendationDishRepository
@@ -21,6 +22,22 @@ public interface RecommendationDishRepository
             """)
     List<RecommendationDish> findAllForRecommendation(
             @Param("recommendationId") String recommendationId
+    );
+
+    @Query("""
+            select dish
+            from RecommendationDish dish
+            join fetch dish.ingredient ingredient
+            join fetch ingredient.recommendation recommendation
+            left join fetch dish.food
+            where recommendation.recommendationId in :recommendationIds
+            order by recommendation.createdAt,
+                     recommendation.recommendationId,
+                     ingredient.rankOrder,
+                     dish.rankOrder
+            """)
+    List<RecommendationDish> findAllForRecommendations(
+            @Param("recommendationIds") Collection<String> recommendationIds
     );
 
     @Modifying
