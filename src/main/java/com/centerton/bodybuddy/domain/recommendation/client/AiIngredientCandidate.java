@@ -7,7 +7,7 @@ import java.util.List;
 public record AiIngredientCandidate(
         String ingredientName,
         List<String> allergenCodes,
-        NutritionValues nutritionPer100g,
+        NutritionValues nutritionPerServing,
         List<AiDishCandidate> dishes
 ) {
     public AiIngredientCandidate {

@@ -37,7 +37,7 @@ public class OpenAiIngredientRecommendationClient
             DB 후보가 영양 기준을 충족하지 못했을 때만 사용할 보완 후보를 생성하세요.
 
             규칙:
-            - 단일 원재료 이름과 그 원재료 100g 기준 영양성분을 반환합니다.
+            - 단일 원재료 이름과 그 원재료 1인분 기준 영양성분을 반환합니다.
             - 대표 부족 영양소의 하루 권장량 충족률이 입력된 최소 비율 이상이어야 합니다.
             - 제외 원재료, 알레르기, 비선호 음식과 같거나 이를 포함한 후보를 반환하지 않습니다.
             - 각 원재료마다 실제로 만들 수 있는 간단한 한국식 활용 요리를 2~3개 반환합니다.
@@ -140,7 +140,7 @@ public class OpenAiIngredientRecommendationClient
                 result.add(new AiIngredientCandidate(
                         candidate.ingredientName().trim(),
                         candidate.allergenCodes(),
-                        nutrition(candidate.nutritionPer100g()),
+                        nutrition(candidate.nutritionPerServing()),
                         candidate.dishes().stream()
                                 .map(dish -> new AiDishCandidate(
                                         dish.dishName().trim(),
@@ -240,12 +240,12 @@ public class OpenAiIngredientRecommendationClient
 
     private void validateCandidate(StructuredCandidate candidate) {
         if (candidate == null || isBlank(candidate.ingredientName())
-                || candidate.allergenCodes() == null || candidate.nutritionPer100g() == null
+                || candidate.allergenCodes() == null || candidate.nutritionPerServing() == null
                 || candidate.dishes() == null || candidate.dishes().size() < 2
                 || candidate.dishes().size() > 3) {
             throw invalidResponse();
         }
-        validateNutrition(candidate.nutritionPer100g());
+        validateNutrition(candidate.nutritionPerServing());
         for (StructuredDish dish : candidate.dishes()) {
             if (dish == null || isBlank(dish.dishName())
                     || dish.ingredientNames() == null || dish.ingredientNames().isEmpty()
@@ -310,7 +310,7 @@ public class OpenAiIngredientRecommendationClient
                 "properties", Map.of(
                         "ingredientName", Map.of("type", "string", "minLength", 1),
                         "allergenCodes", allergenArray(),
-                        "nutritionPer100g", nutritionSchema(),
+                        "nutritionPerServing", nutritionSchema(),
                         "dishes", Map.of(
                                 "type", "array",
                                 "minItems", 2,
@@ -319,7 +319,7 @@ public class OpenAiIngredientRecommendationClient
                         )
                 ),
                 "required", List.of(
-                        "ingredientName", "allergenCodes", "nutritionPer100g", "dishes"
+                        "ingredientName", "allergenCodes", "nutritionPerServing", "dishes"
                 ),
                 "additionalProperties", false
         );
@@ -392,7 +392,7 @@ public class OpenAiIngredientRecommendationClient
     private record StructuredCandidate(
             String ingredientName,
             List<String> allergenCodes,
-            StructuredNutrition nutritionPer100g,
+            StructuredNutrition nutritionPerServing,
             List<StructuredDish> dishes
     ) {
     }

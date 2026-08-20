@@ -132,6 +132,9 @@ CREATE TABLE food_nutritions (
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (food_id),
     CONSTRAINT chk_food_nutritions_reference CHECK (reference_amount > 0),
+    CONSTRAINT chk_food_nutritions_serving_reference CHECK (
+        reference_amount = 1.00 AND reference_unit = '인분'
+    ),
     CONSTRAINT chk_food_nutritions_nonnegative CHECK (
         (calories_kcal IS NULL OR calories_kcal >= 0)
         AND (carbohydrate_g IS NULL OR carbohydrate_g >= 0)

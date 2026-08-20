@@ -82,10 +82,10 @@ public class RecommendationPlanningService {
                             current.ingredientName(),
                             index + 1,
                             current.targetNutrient(),
-                            current.targetAmountPer100g(),
+                            current.targetAmountPerServing(),
                             current.dailyTargetCoverageRatio(),
                             current.overallDeficiencyCoverageScore(),
-                            current.nutritionPer100g()
+                            current.nutritionPerServing()
                     ),
                     ingredient.dishes()
             ));

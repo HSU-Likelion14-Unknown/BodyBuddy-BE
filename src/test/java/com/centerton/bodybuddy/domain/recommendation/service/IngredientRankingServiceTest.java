@@ -50,10 +50,10 @@ class IngredientRankingServiceTest {
         NutritionGapResult ironGap = ironGap();
         User user = user(List.of("PORK"), List.of("간"));
         when(foodNutritionRepository.findRecommendationCandidates()).thenReturn(List.of(
-                nutrition("pork", "돼지고기", "20", "100"),
-                nutrition("liver", "간", "15", "100"),
-                nutrition("spinach", "시금치", "4", "100"),
-                nutrition("sesame", "참깨", "8", "200")
+                nutrition("pork", "돼지고기", "20", "1"),
+                nutrition("liver", "간", "15", "1"),
+                nutrition("spinach", "시금치", "4", "1"),
+                nutrition("sesame", "참깨", "8", "2")
         ));
 
         List<RankedIngredient> result = rankingService.rank(user, ironGap, 3);
@@ -62,7 +62,7 @@ class IngredientRankingServiceTest {
                 .containsExactly("시금치", "참깨");
         assertThat(result).extracting(RankedIngredient::rank).containsExactly(1, 2);
         assertThat(result.getFirst().targetNutrient()).isEqualTo(TargetNutrient.IRON);
-        assertThat(result.getFirst().targetAmountPer100g()).isEqualByComparingTo("4.00");
+        assertThat(result.getFirst().targetAmountPerServing()).isEqualByComparingTo("4.00");
     }
 
     @Test
@@ -70,9 +70,9 @@ class IngredientRankingServiceTest {
         NutritionGapResult ironGap = ironGap();
         User user = user(List.of(), List.of());
         when(foodNutritionRepository.findRecommendationCandidates()).thenReturn(List.of(
-                nutrition("b-food", "시금치", "5", "100"),
-                nutrition("a-food", "시금치", "5", "100"),
-                nutrition("c-food", "미나리", "5", "100")
+                nutrition("b-food", "시금치", "5", "1"),
+                nutrition("a-food", "시금치", "5", "1"),
+                nutrition("c-food", "미나리", "5", "1")
         ));
 
         List<RankedIngredient> result = rankingService.rank(user, ironGap, 3);
@@ -133,7 +133,7 @@ class IngredientRankingServiceTest {
         );
         User user = user(List.of(), List.of());
         when(foodNutritionRepository.findRecommendationCandidates()).thenReturn(List.of(
-                nutrition("spinach", "시금치", "4", "100")
+                nutrition("spinach", "시금치", "4", "1")
         ));
 
         List<RankedIngredient> result = rankingService.rank(user, partialGap, 1);
@@ -172,9 +172,9 @@ class IngredientRankingServiceTest {
         List<String> foodIds = List.of("weak", "previous", "valid");
         when(foodNutritionRepository.findRecommendationCandidatesByFoodIds(foodIds))
                 .thenReturn(List.of(
-                        nutrition("weak", "미나리", "1.59", "100"),
-                        nutrition("previous", "시금치", "4", "100"),
-                        nutrition("valid", "렌틸콩", "1.60", "100")
+                        nutrition("weak", "미나리", "1.59", "1"),
+                        nutrition("previous", "시금치", "4", "1"),
+                        nutrition("valid", "렌틸콩", "1.60", "1")
                 ));
 
         List<RankedIngredient> result = rankingService.rankMappable(
@@ -239,7 +239,7 @@ class IngredientRankingServiceTest {
         return FoodNutrition.builder()
                 .food(food)
                 .referenceAmount(new BigDecimal(referenceAmount))
-                .referenceUnit("g")
+                .referenceUnit("인분")
                 .nutrition(NutritionValues.builder()
                         .proteinG(new BigDecimal("10"))
                         .fiberG(new BigDecimal("2"))

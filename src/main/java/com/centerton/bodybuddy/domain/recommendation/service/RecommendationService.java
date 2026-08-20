@@ -314,7 +314,7 @@ public class RecommendationService {
                             .rankOrder(index + 1)
                             .ingredientName(planned.rankedIngredient().ingredientName())
                             .reason(reason(target))
-                            .nutritionSnapshot(planned.rankedIngredient().nutritionPer100g())
+                            .nutritionSnapshot(planned.rankedIngredient().nutritionPerServing())
                             .build()
             );
             saveDishes(ingredient, planned.dishes());
