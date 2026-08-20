@@ -51,6 +51,6 @@ https://www.law.go.kr/LSW/cgmExpcInfoP.do?cgmExpcDatSeq=419496&mode=2&ofiClsCd=3
 
 ## 요리 매핑 연결
 
-`RecommendationPlanningService`가 전체 원재료 랭킹에서 DB 매핑이 있고 안전한 요리를 2개 이상 확보한 원재료를 최대 3개 선택한다. 상세 매핑 및 안전 정책은 `INGREDIENT_DISH_MAPPING.md`를 따른다.
+`RecommendationPlanningService`가 전체 원재료 랭킹에서 안전한 원재료를 최대 3개 선택한다. DB에 안전한 활용 요리가 2개 이상 있으면 해당 매핑을 사용하고, 부족하면 OpenAI가 그 원재료의 요리만 2~3개 보완한다. DB 원재료로 요청 개수를 채우지 못한 경우에만 OpenAI 원재료 fallback을 사용한다. 새 추천은 사용자의 직전 추천 원재료를 제외하며, 새로고침은 같은 추천에서 이전에 노출한 원재료를 누적 제외한다. 상세 매핑 및 안전 정책은 `INGREDIENT_DISH_MAPPING.md`를 따른다.
 
 추천 저장·응답 API와 실제 AI 설명·재정렬은 후속 작업에서 이 결과를 사용해 완성한다.

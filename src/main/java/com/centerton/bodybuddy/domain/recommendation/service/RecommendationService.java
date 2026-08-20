@@ -103,10 +103,14 @@ public class RecommendationService {
         }
 
         LocalDate recommendationDate = kstDate(meal.getEatenAt());
+        List<String> previousIngredientNames = latestRecommendationIngredientNames(
+                user.getUserId()
+        );
         RecommendationPlan plan = planningService.plan(
                 user,
                 recommendationDate,
-                recommendationProperties.getIngredientCount()
+                recommendationProperties.getIngredientCount(),
+                previousIngredientNames
         );
         Recommendation recommendation = saveRecommendation(user, meal, recommendationDate, plan);
         completeIdempotencyKey(
@@ -117,6 +121,22 @@ public class RecommendationService {
                 responseAssembler.assemble(recommendation),
                 true
         );
+    }
+
+    private List<String> latestRecommendationIngredientNames(String userId) {
+        return recommendationRepository
+                .findFirstByUserUserIdOrderByCreatedAtDescRecommendationIdDesc(userId)
+                .map(Recommendation::getRecommendationId)
+                .map(ingredientRepository
+                        ::findAllByRecommendationRecommendationIdOrderByRankOrderAsc)
+                .orElseGet(List::of)
+                .stream()
+                .map(RecommendationIngredient::getIngredientName)
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(name -> !name.isBlank())
+                .distinct()
+                .toList();
     }
 
     @Transactional

@@ -109,6 +109,9 @@ class RecommendationServiceTest {
     @Test
     void createsRecommendationSnapshotsForConfirmedMeal() {
         Meal meal = confirmedMeal(LocalDateTime.of(2026, 8, 15, 16, 30));
+        Recommendation previousRecommendation = recommendation(
+                confirmedMeal(LocalDateTime.of(2026, 8, 14, 12, 0))
+        );
         RecommendationPlan plan = planWithIngredient();
         RecommendationRes assembled = RecommendationRes.builder()
                 .recommendationId("response-id")
@@ -122,7 +125,16 @@ class RecommendationServiceTest {
         completeReservation();
         when(recommendationRepository.findByMealMealId(meal.getMealId()))
                 .thenReturn(Optional.empty());
-        when(planningService.plan(user, LocalDate.of(2026, 8, 16), 2)).thenReturn(plan);
+        when(recommendationRepository
+                .findFirstByUserUserIdOrderByCreatedAtDescRecommendationIdDesc("user-id"))
+                .thenReturn(Optional.of(previousRecommendation));
+        when(ingredientRepository
+                .findAllByRecommendationRecommendationIdOrderByRankOrderAsc(
+                        previousRecommendation.getRecommendationId()))
+                .thenReturn(List.of(ingredient(previousRecommendation)));
+        when(planningService.plan(
+                user, LocalDate.of(2026, 8, 16), 2, List.of("시금치")))
+                .thenReturn(plan);
         when(recommendationRepository.save(any(Recommendation.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(foodRepository.getReferenceById(anyString()))
@@ -147,6 +159,8 @@ class RecommendationServiceTest {
                 .isEqualTo(LocalDate.of(2026, 8, 16));
         assertThat(captor.getValue().getStatus()).isEqualTo(RecommendationStatus.CREATED);
         assertThat(captor.getValue().getTargetNutrient()).isEqualTo(TargetNutrient.IRON);
+        verify(planningService).plan(
+                user, LocalDate.of(2026, 8, 16), 2, List.of("시금치"));
         verify(ingredientRepository, times(2)).save(any(RecommendationIngredient.class));
         verify(dishRepository, times(2)).saveAll(anyList());
         verify(idempotencyKeyRepository).reserve(
@@ -606,7 +620,8 @@ class RecommendationServiceTest {
         completeReservation();
         when(recommendationRepository.findByMealMealId(meal.getMealId()))
                 .thenReturn(Optional.empty());
-        when(planningService.plan(user, LocalDate.of(2026, 8, 16), 2)).thenReturn(plan);
+        when(planningService.plan(user, LocalDate.of(2026, 8, 16), 2, List.of()))
+                .thenReturn(plan);
         when(recommendationRepository.save(any(Recommendation.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
     }

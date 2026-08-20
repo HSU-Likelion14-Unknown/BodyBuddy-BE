@@ -169,18 +169,17 @@ class IngredientRankingServiceTest {
     @Test
     void excludesPreviousNamesAndCandidatesBelowMinimumTargetCoverage() {
         User user = user(List.of(), List.of());
-        List<String> foodIds = List.of("weak", "previous", "valid");
-        when(foodNutritionRepository.findRecommendationCandidatesByFoodIds(foodIds))
+        when(foodNutritionRepository.findRecommendationCandidates())
                 .thenReturn(List.of(
                         nutrition("weak", "미나리", "1.59", "1"),
                         nutrition("previous", "시금치", "4", "1"),
                         nutrition("valid", "렌틸콩", "1.60", "1")
                 ));
 
-        List<RankedIngredient> result = rankingService.rankMappable(
+        List<RankedIngredient> result = rankingService.rank(
                 user,
                 ironGap(),
-                foodIds,
+                3,
                 List.of(" 시금치 "),
                 new BigDecimal("0.20")
         );

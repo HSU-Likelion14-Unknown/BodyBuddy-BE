@@ -5,6 +5,7 @@ import com.centerton.bodybuddy.domain.recommendation.model.IngredientDishRecomme
 import com.centerton.bodybuddy.domain.recommendation.model.RankedIngredient;
 import com.centerton.bodybuddy.domain.recommendation.model.RecommendationNutritionAnalysis;
 import com.centerton.bodybuddy.domain.recommendation.model.RecommendationPlan;
+import com.centerton.bodybuddy.domain.recommendation.model.RecommendedDish;
 import com.centerton.bodybuddy.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,8 @@ import java.util.Set;
 public class RecommendationPlanningService {
 
     private static final int MAX_RECOMMENDED_INGREDIENTS = 3;
+    private static final int CATALOG_CANDIDATE_POOL_SIZE = 12;
+    private static final int MAX_AI_DISH_COMPLETION_ATTEMPTS = 4;
 
     private final RecommendationNutritionAnalysisService nutritionAnalysisService;
     private final IngredientDishMappingService dishMappingService;
@@ -37,28 +40,22 @@ public class RecommendationPlanningService {
     public RecommendationPlan plan(User user, LocalDate date, int ingredientLimit,
                                    Collection<String> excludedIngredientNames) {
         int safeLimit = Math.max(0, Math.min(ingredientLimit, MAX_RECOMMENDED_INGREDIENTS));
-        List<String> mappableFoodIds = safeLimit == 0
-                ? List.of()
-                : dishMappingService.findMappableIngredientFoodIds();
-        RecommendationNutritionAnalysis analysis = nutritionAnalysisService.analyzeMappable(
+        RecommendationNutritionAnalysis analysis = nutritionAnalysisService.analyze(
                 user,
                 date,
-                mappableFoodIds,
+                safeLimit == 0 ? 0 : CATALOG_CANDIDATE_POOL_SIZE,
                 excludedIngredientNames,
                 properties.minimumTargetCoverageRatio()
         );
-        List<IngredientDishRecommendation> catalogIngredients = dishMappingService.map(
-                user,
-                analysis.ingredients(),
-                safeLimit
+        List<IngredientDishRecommendation> combined = completeCatalogIngredients(
+                user, analysis.ingredients(), safeLimit
         );
-        List<IngredientDishRecommendation> combined = new ArrayList<>(catalogIngredients);
         if (combined.size() < safeLimit && analysis.nutritionGap().target().isPresent()) {
             Set<String> aiExclusions = new HashSet<>();
             if (excludedIngredientNames != null) {
                 aiExclusions.addAll(excludedIngredientNames);
             }
-            catalogIngredients.stream()
+            combined.stream()
                     .map(IngredientDishRecommendation::rankedIngredient)
                     .map(RankedIngredient::ingredientName)
                     .forEach(aiExclusions::add);
@@ -91,5 +88,37 @@ public class RecommendationPlanningService {
             ));
         }
         return new RecommendationPlan(analysis.nutritionGap(), ranked);
+    }
+
+    private List<IngredientDishRecommendation> completeCatalogIngredients(
+            User user,
+            List<RankedIngredient> candidates,
+            int limit
+    ) {
+        if (limit <= 0 || candidates == null || candidates.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<IngredientDishRecommendation> result = new ArrayList<>();
+        int aiAttempts = 0;
+        for (RankedIngredient candidate : candidates) {
+            if (candidate == null) {
+                continue;
+            }
+            List<RecommendedDish> dishes = dishMappingService.findSafeDishes(
+                    user, candidate
+            );
+            if (dishes.size() < 2 && aiAttempts < MAX_AI_DISH_COMPLETION_ATTEMPTS) {
+                aiAttempts++;
+                dishes = aiFallbackService.completeDishes(user, candidate);
+            }
+            if (dishes.size() < 2) {
+                continue;
+            }
+            result.add(new IngredientDishRecommendation(candidate, dishes));
+            if (result.size() == limit) {
+                break;
+            }
+        }
+        return result;
     }
 }

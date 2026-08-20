@@ -67,6 +67,36 @@ class OpenAiIngredientRecommendationClientTest {
         server.verify();
     }
 
+    @Test
+    void requestsDishCompletionForKnownIngredientWithoutReplacingItsNutrition() {
+        AtomicReference<JsonNode> requestBody = new AtomicReference<>();
+        server.expect(once(), requestTo("https://api.openai.test/v1/responses"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> requestBody.set(bodyOf(request)))
+                .andRespond(withSuccess(dishOpenAiResponse(), MediaType.APPLICATION_JSON));
+
+        List<AiDishCandidate> result = client.recommendDishes(
+                new AiDishRecommendationInput(
+                        "시금치",
+                        List.of(),
+                        List.of("가지")
+                )
+        );
+
+        assertThat(result)
+                .extracting(AiDishCandidate::dishName)
+                .containsExactly("시금치나물", "시금치국");
+        JsonNode body = requestBody.get();
+        assertThat(body.path("instructions").stringValue())
+                .contains("입력된 원재료", "2~3개");
+        assertThat(body.path("input").toString()).contains("시금치", "가지");
+        JsonNode properties = body.path("text").path("format").path("schema")
+                .path("properties");
+        assertThat(properties.has("dishes")).isTrue();
+        assertThat(properties.has("nutritionPerServing")).isFalse();
+        server.verify();
+    }
+
     private AiIngredientRecommendationInput input() {
         KdrReferenceValues reference = new KdrReferenceValues(
                 value("65"), value("30"), value("800"), value("8"),
@@ -106,6 +136,27 @@ class OpenAiIngredientRecommendationClientTest {
                         "content", List.of(Map.of(
                                 "type", "output_text",
                                 "text", "{\"candidates\":[]}"
+                        ))
+                ))
+        ));
+    }
+
+    private String dishOpenAiResponse() {
+        return objectMapper.writeValueAsString(Map.of(
+                "id", "resp_dishes",
+                "status", "completed",
+                "model", "gpt-5-mini-2025-08-07",
+                "output", List.of(Map.of(
+                        "type", "message",
+                        "content", List.of(Map.of(
+                                "type", "output_text",
+                                "text", "{\"dishes\":["
+                                        + "{\"dishName\":\"시금치나물\","
+                                        + "\"ingredientNames\":[\"시금치\"],"
+                                        + "\"allergenCodes\":[]},"
+                                        + "{\"dishName\":\"시금치국\","
+                                        + "\"ingredientNames\":[\"시금치\",\"된장\"],"
+                                        + "\"allergenCodes\":[\"SOY\"]}]}"
                         ))
                 ))
         ));
