@@ -14,6 +14,9 @@ public class MonthlyStatsRes {
     private String month;
     private BigDecimal totalCalories;
     private BigDecimal averageCalories;
+    private BigDecimal averageCarbohydrate;
+    private BigDecimal averageProtein;
+    private BigDecimal averageFat;
     private int recordedDays;
     private List<DayStatus> days;
 
