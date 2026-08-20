@@ -30,12 +30,14 @@ import java.util.Optional;
 public class OpenAiFoodNutritionEstimationClient implements FoodNutritionEstimationClient {
 
     static final String PROVIDER = "OPENAI";
+    private static final String SERVING_UNIT = "인분";
     static final String SYSTEM_PROMPT = """
             당신은 식사 기록을 위한 영양성분 추정기입니다.
-            음식명과 사용자가 확정한 섭취량을 바탕으로 해당 섭취량 전체의 영양성분을 추정하세요.
+            음식명과 사용자가 확정한 인분 수를 바탕으로 해당 섭취량 전체의 영양성분을 추정하세요.
 
             규칙:
-            - 값은 1회 제공량이나 100g 기준이 아니라 입력된 섭취량 전체 기준입니다.
+            - 섭취량 단위는 항상 인분입니다.
+            - 값은 무게 기준으로 환산하지 말고 입력된 인분 수 전체 기준으로 반환합니다.
             - 일반적인 한국 음식 조리법과 평균적인 제공량을 기준으로 현실적인 값을 사용합니다.
             - 모든 영양성분은 0 이상의 숫자로 반환합니다.
             - confidence는 음식명, 양, 단위로 영양성분을 추정할 수 있는 확신도를 0 이상 1 이하로 반환합니다.
@@ -182,7 +184,7 @@ public class OpenAiFoodNutritionEstimationClient implements FoodNutritionEstimat
                         "role", "user",
                         "content", List.of(Map.of(
                                 "type", "input_text",
-                                "text", "다음 음식의 확정 섭취량 전체에 대한 영양성분을 추정하세요.\n"
+                                "text", "다음 음식의 확정 인분 수 전체에 대한 영양성분을 추정하세요.\n"
                                         + "<food_name>" + input.foodName().trim() + "</food_name>\n"
                                         + "<consumed_amount>" + input.consumedAmount().toPlainString()
                                         + "</consumed_amount>\n"
@@ -226,7 +228,7 @@ public class OpenAiFoodNutritionEstimationClient implements FoodNutritionEstimat
                 || input.consumedAmount() == null
                 || input.consumedAmount().signum() <= 0
                 || input.consumedUnit() == null
-                || input.consumedUnit().isBlank()) {
+                || !SERVING_UNIT.equals(input.consumedUnit().trim())) {
             throw invalidResponse();
         }
     }

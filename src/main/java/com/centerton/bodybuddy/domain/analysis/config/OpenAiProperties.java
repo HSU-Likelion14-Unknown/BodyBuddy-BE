@@ -70,7 +70,7 @@ public class OpenAiProperties {
         private String model = "gpt-5-mini-2025-08-07";
 
         @NotBlank
-        private String promptVersion = "food-nutrition-estimation-v1";
+        private String promptVersion = "food-nutrition-estimation-v2";
 
         @Min(1)
         @Max(4096)
@@ -85,7 +85,7 @@ public class OpenAiProperties {
         private String model = "gpt-5-mini-2025-08-07";
 
         @NotBlank
-        private String promptVersion = "ingredient-recommendation-v1";
+        private String promptVersion = "ingredient-recommendation-v2";
 
         @Min(1)
         @Max(4096)

@@ -102,7 +102,7 @@ public class AiIngredientFallbackService {
             int rank
     ) {
         if (candidate == null || candidate.ingredientName() == null
-                || candidate.nutritionPer100g() == null) {
+                || candidate.nutritionPerServing() == null) {
             return null;
         }
         String normalizedName = FoodNameNormalizer.normalizeLookupName(
@@ -128,7 +128,7 @@ public class AiIngredientFallbackService {
         }
 
         TargetNutrient target = gapResult.target().orElseThrow();
-        BigDecimal targetAmount = target.amountFrom(candidate.nutritionPer100g());
+        BigDecimal targetAmount = target.amountFrom(candidate.nutritionPerServing());
         BigDecimal referenceAmount = gapResult.reference().amountOf(target);
         if (targetAmount == null || targetAmount.signum() <= 0
                 || referenceAmount == null || referenceAmount.signum() <= 0) {
@@ -154,8 +154,8 @@ public class AiIngredientFallbackService {
                 target,
                 targetAmount,
                 targetCoverage,
-                overallCoverage(candidate.nutritionPer100g(), gapResult),
-                candidate.nutritionPer100g()
+                overallCoverage(candidate.nutritionPerServing(), gapResult),
+                candidate.nutritionPerServing()
         );
         return new IngredientDishRecommendation(ranked, dishes);
     }

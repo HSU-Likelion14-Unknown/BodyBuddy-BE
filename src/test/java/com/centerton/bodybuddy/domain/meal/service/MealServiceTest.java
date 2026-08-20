@@ -353,7 +353,7 @@ class MealServiceTest {
 
         MealConfirmReq request = new MealConfirmReq(
                 List.of(new MealItemInputReq(
-                        "food-id", "두부", new BigDecimal("50"), "g"
+                        "food-id", "두부", new BigDecimal("0.5"), "인분"
                 )),
                 OffsetDateTime.of(2026, 8, 13, 12, 0, 0, 0, ZoneOffset.ofHours(9))
         );
@@ -434,7 +434,7 @@ class MealServiceTest {
 
         MealItemsUpdateReq request = new MealItemsUpdateReq(
                 List.of(new MealItemInputReq(
-                        "food-id", "두부", new BigDecimal("50"), "g"
+                        "food-id", "두부", new BigDecimal("0.5"), "인분"
                 ))
         );
 
@@ -465,7 +465,7 @@ class MealServiceTest {
                 .thenReturn(Optional.of(meal));
         MealItemsUpdateReq request = new MealItemsUpdateReq(
                 List.of(new MealItemInputReq(
-                        "food-id", "두부", new BigDecimal("50"), "g"
+                        "food-id", "두부", new BigDecimal("0.5"), "인분"
                 ))
         );
 
@@ -498,7 +498,7 @@ class MealServiceTest {
                 "meal-id",
                 new MealConfirmReq(
                         List.of(new MealItemInputReq(
-                                null, "두부", new BigDecimal("50"), "g"
+                                null, "두부", new BigDecimal("0.5"), "인분"
                         )),
                         OffsetDateTime.now()
                 )
@@ -531,7 +531,7 @@ class MealServiceTest {
                 "meal-id",
                 new MealConfirmReq(
                         List.of(new MealItemInputReq(
-                                null, "엄마표 특별식", new BigDecimal("1"), "그릇"
+                                null, "엄마표 특별식", new BigDecimal("1"), "인분"
                         )),
                         OffsetDateTime.now()
                 )
@@ -571,7 +571,7 @@ class MealServiceTest {
                         new BigDecimal("0.78"),
                         "OPENAI",
                         "gpt-5-mini-2025-08-07",
-                        "food-nutrition-estimation-v1",
+                        "food-nutrition-estimation-v2",
                         "resp_nutrition",
                         80,
                         30
@@ -586,7 +586,7 @@ class MealServiceTest {
                 "meal-id",
                 new MealConfirmReq(
                         List.of(new MealItemInputReq(
-                                null, "짜장면", new BigDecimal("1.5"), "그릇"
+                                null, "짜장면", new BigDecimal("1.5"), "인분"
                         )),
                         OffsetDateTime.now()
                 )
@@ -598,7 +598,7 @@ class MealServiceTest {
         assertThat(item.getNutritionBasis()).isEqualTo(NutritionBasis.AI_ESTIMATE);
         assertThat(item.getNutritionProvider()).isEqualTo("OPENAI");
         assertThat(item.getNutritionModel()).isEqualTo("gpt-5-mini-2025-08-07");
-        assertThat(item.getNutritionPromptVersion()).isEqualTo("food-nutrition-estimation-v1");
+        assertThat(item.getNutritionPromptVersion()).isEqualTo("food-nutrition-estimation-v2");
         assertThat(item.getNutritionConfidence()).isEqualByComparingTo("0.78");
         assertThat(item.getCaloriesKcal()).isEqualByComparingTo("650");
         assertThat(response.getNutritionSummaryStatus()).isEqualTo(NutritionSummaryStatus.COMPLETE);
@@ -611,7 +611,7 @@ class MealServiceTest {
         verify(nutritionEstimationClient).estimate(inputCaptor.capture());
         assertThat(inputCaptor.getValue().foodName()).isEqualTo("짜장면");
         assertThat(inputCaptor.getValue().consumedAmount()).isEqualByComparingTo("1.5");
-        assertThat(inputCaptor.getValue().consumedUnit()).isEqualTo("그릇");
+        assertThat(inputCaptor.getValue().consumedUnit()).isEqualTo("인분");
         var order = inOrder(nutritionEstimationClient, transactionOperations);
         order.verify(nutritionEstimationClient).estimate(any(FoodNutritionEstimationInput.class));
         order.verify(transactionOperations).execute(any());
@@ -720,8 +720,8 @@ class MealServiceTest {
                 .build();
         return FoodNutrition.builder()
                 .food(food)
-                .referenceAmount(new BigDecimal("100"))
-                .referenceUnit("g")
+                .referenceAmount(BigDecimal.ONE)
+                .referenceUnit("인분")
                 .nutrition(NutritionValues.builder()
                         .caloriesKcal(new BigDecimal("200"))
                         .proteinG(new BigDecimal("10"))

@@ -28,7 +28,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class IngredientRankingService {
 
-    private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
+    private static final BigDecimal ONE_SERVING = BigDecimal.ONE;
     private static final int SCORE_SCALE = 8;
     private static final int CANDIDATE_QUERY_BATCH_SIZE = 100;
 
@@ -165,13 +165,13 @@ public class IngredientRankingService {
                 && candidate.getNutrition() != null
                 && candidate.getReferenceAmount() != null
                 && candidate.getReferenceAmount().signum() > 0
-                && "g".equalsIgnoreCase(candidate.getReferenceUnit());
+                && "인분".equals(candidate.getReferenceUnit());
     }
 
     private CandidateScore score(FoodNutrition candidate, TargetNutrient target,
                                  NutritionGapResult gapResult) {
-        NutritionValues per100g = scaleTo100g(candidate);
-        BigDecimal targetAmount = target.amountFrom(per100g);
+        NutritionValues perServing = scaleToServing(candidate);
+        BigDecimal targetAmount = target.amountFrom(perServing);
         if (targetAmount == null || targetAmount.signum() <= 0) {
             return null;
         }
@@ -180,22 +180,22 @@ public class IngredientRankingService {
                 SCORE_SCALE,
                 RoundingMode.HALF_UP
         );
-        BigDecimal overallScore = overallCoverage(per100g, gapResult);
+        BigDecimal overallScore = overallCoverage(perServing, gapResult);
         return new CandidateScore(
                 candidate,
-                per100g,
+                perServing,
                 targetAmount,
                 targetCoverage,
                 overallScore
         );
     }
 
-    private BigDecimal overallCoverage(NutritionValues per100g,
+    private BigDecimal overallCoverage(NutritionValues perServing,
                                        NutritionGapResult gapResult) {
         BigDecimal score = BigDecimal.ZERO;
         for (TargetNutrient nutrient : TargetNutrient.values()) {
             NutrientGap gap = gapResult.gapOf(nutrient);
-            BigDecimal amount = nutrient.amountFrom(per100g);
+            BigDecimal amount = nutrient.amountFrom(perServing);
             if (gap == null
                     || gap.gapAmount().signum() == 0
                     || amount == null
@@ -212,8 +212,8 @@ public class IngredientRankingService {
         return score.setScale(SCORE_SCALE, RoundingMode.HALF_UP);
     }
 
-    private NutritionValues scaleTo100g(FoodNutrition candidate) {
-        BigDecimal ratio = ONE_HUNDRED.divide(
+    private NutritionValues scaleToServing(FoodNutrition candidate) {
+        BigDecimal ratio = ONE_SERVING.divide(
                 candidate.getReferenceAmount(),
                 SCORE_SCALE,
                 RoundingMode.HALF_UP
@@ -249,7 +249,7 @@ public class IngredientRankingService {
 
     private record CandidateScore(
             FoodNutrition nutrition,
-            NutritionValues nutritionPer100g,
+            NutritionValues nutritionPerServing,
             BigDecimal targetAmount,
             BigDecimal targetCoverage,
             BigDecimal overallScore
@@ -263,7 +263,7 @@ public class IngredientRankingService {
                     targetAmount,
                     targetCoverage,
                     overallScore,
-                    nutritionPer100g
+                    nutritionPerServing
             );
         }
     }

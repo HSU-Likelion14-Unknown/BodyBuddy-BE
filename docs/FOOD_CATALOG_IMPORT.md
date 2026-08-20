@@ -7,7 +7,8 @@
 - 원본: `식품성분표(10개정판).xlsx`
 - 사용 시트: `국가표준식품성분 Database 10.4`
 - 코드 연결: `부록1)식품코드 연계표`
-- 영양 기준: 가식부 100g
+- 원본 영양 기준: 가식부 100g
+- 서비스 영양 기준: 원본 100g 값을 1인분으로 간주해 `reference_amount=1`, `reference_unit='인분'`으로 적재
 - 원천 식별자: `(data_source, source_food_code)`
 - 음식 UUID: 원천 식품코드로 만든 UUID v5이므로 재생성해도 동일하다.
 
@@ -46,6 +47,9 @@ mysql --default-character-set=utf8mb4 -h 127.0.0.1 -u bodybuddy -p bodybuddy_db 
 
 mysql --default-character-set=utf8mb4 -h 127.0.0.1 -u bodybuddy -p bodybuddy_db \
   < db/data/food_catalog_10_4_seed.sql
+
+mysql --default-character-set=utf8mb4 -h 127.0.0.1 -u bodybuddy -p bodybuddy_db \
+  < db/migrations/V20260820_01__standardize_food_nutrition_serving_unit.sql
 ```
 
 seed는 동일한 원천 코드에 대해 upsert하므로 반복 실행할 수 있다. 마이그레이션은 한 번만 실행한다.
@@ -70,6 +74,7 @@ JOIN foods f ON f.food_id = fn.food_id
 WHERE f.data_source = 'KFCT' AND f.source_version = '10.4';
 
 SELECT f.ingredient_name, f.canonical_name, f.representative_method,
+       fn.reference_amount, fn.reference_unit,
        fn.protein_g, fn.calcium_mg, fn.iron_mg
 FROM foods f
 JOIN food_nutritions fn ON fn.food_id = f.food_id

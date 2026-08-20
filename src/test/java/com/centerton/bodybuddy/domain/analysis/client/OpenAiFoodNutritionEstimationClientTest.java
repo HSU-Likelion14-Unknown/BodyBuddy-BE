@@ -63,7 +63,7 @@ class OpenAiFoodNutritionEstimationClientTest {
                 new FoodNutritionEstimationInput(
                         "짜장면",
                         new BigDecimal("1.5"),
-                        "그릇"
+                        "인분"
                 )
         ).orElseThrow();
 
@@ -72,7 +72,7 @@ class OpenAiFoodNutritionEstimationClientTest {
         assertThat(result.confidence()).isEqualByComparingTo("0.74");
         assertThat(result.provider()).isEqualTo("OPENAI");
         assertThat(result.model()).isEqualTo("gpt-5-mini-2025-08-07");
-        assertThat(result.promptVersion()).isEqualTo("food-nutrition-estimation-v1");
+        assertThat(result.promptVersion()).isEqualTo("food-nutrition-estimation-v2");
         assertThat(result.providerResponseId()).isEqualTo("resp_nutrition");
         assertThat(result.inputTokens()).isEqualTo(88);
         assertThat(result.outputTokens()).isEqualTo(42);
@@ -85,7 +85,10 @@ class OpenAiFoodNutritionEstimationClientTest {
         String inputText = body.path("input").get(0)
                 .path("content").get(0)
                 .path("text").stringValue();
-        assertThat(inputText).contains("짜장면", "1.5", "그릇");
+        assertThat(inputText).contains("짜장면", "1.5", "인분");
+        assertThat(body.path("instructions").stringValue())
+                .contains("인분")
+                .doesNotContain("100g");
         server.verify();
     }
 
@@ -100,7 +103,7 @@ class OpenAiFoodNutritionEstimationClientTest {
         assertThatThrownBy(() -> client.estimate(new FoodNutritionEstimationInput(
                 "짜장면",
                 BigDecimal.ONE,
-                "그릇"
+                "인분"
         ))).isInstanceOfSatisfying(BaseException.class, exception ->
                 assertThat(exception.getBaseResponseCode())
                         .isEqualTo(ErrorResponseCode.AI_BAD_RESPONSE));
@@ -115,10 +118,22 @@ class OpenAiFoodNutritionEstimationClientTest {
         assertThatThrownBy(() -> client.estimate(new FoodNutritionEstimationInput(
                 "짜장면",
                 BigDecimal.ONE,
-                "그릇"
+                "인분"
         ))).isInstanceOfSatisfying(BaseException.class, exception ->
                 assertThat(exception.getBaseResponseCode())
                         .isEqualTo(ErrorResponseCode.AI_SERVICE_UNAVAILABLE));
+        server.verify();
+    }
+
+    @Test
+    void rejectsWeightUnitBeforeCallingProvider() {
+        assertThatThrownBy(() -> client.estimate(new FoodNutritionEstimationInput(
+                "짜장면",
+                new BigDecimal("100"),
+                "g"
+        ))).isInstanceOfSatisfying(BaseException.class, exception ->
+                assertThat(exception.getBaseResponseCode())
+                        .isEqualTo(ErrorResponseCode.AI_BAD_RESPONSE));
         server.verify();
     }
 

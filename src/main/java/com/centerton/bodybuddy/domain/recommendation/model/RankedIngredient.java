@@ -9,9 +9,9 @@ public record RankedIngredient(
         String ingredientName,
         int rank,
         TargetNutrient targetNutrient,
-        BigDecimal targetAmountPer100g,
+        BigDecimal targetAmountPerServing,
         BigDecimal dailyTargetCoverageRatio,
         BigDecimal overallDeficiencyCoverageScore,
-        NutritionValues nutritionPer100g
+        NutritionValues nutritionPerServing
 ) {
 }
