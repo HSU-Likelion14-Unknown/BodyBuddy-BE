@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 public interface RecommendationRepository extends JpaRepository<Recommendation, String> {
@@ -16,6 +18,20 @@ public interface RecommendationRepository extends JpaRepository<Recommendation, 
     Optional<Recommendation> findByRecommendationIdAndUserUserId(
             String recommendationId,
             String userId
+    );
+
+    @Query("""
+            select recommendation
+            from Recommendation recommendation
+            where recommendation.user.userId = :userId
+              and recommendation.recommendationDate >= :startDate
+              and recommendation.recommendationDate < :endDate
+            order by recommendation.recommendationDate
+            """)
+    List<Recommendation> findMonthlyRecommendations(
+            @Param("userId") String userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
     );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
