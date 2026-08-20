@@ -512,9 +512,9 @@ public class MealService {
                                                 MealItemInputReq request) {
         if (catalogMatch != null) {
             NutritionValues catalogNutrition = calculateNutrition(catalogMatch, request);
-            return catalogNutrition == null
-                    ? NutritionSnapshot.unknown()
-                    : NutritionSnapshot.catalog(catalogNutrition);
+            if (catalogNutrition != null) {
+                return NutritionSnapshot.catalog(catalogNutrition);
+            }
         }
 
         try {
