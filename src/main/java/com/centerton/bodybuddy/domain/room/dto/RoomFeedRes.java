@@ -14,6 +14,7 @@ public record RoomFeedRes(
     public record FeedItem(
             String userId,
             String nickname,
+            String profileImageUrl,
             String mealId,
             String photoUrl,
             List<String> foodNames,

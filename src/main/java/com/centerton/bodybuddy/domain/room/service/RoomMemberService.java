@@ -51,6 +51,9 @@ public class RoomMemberService {
                 .map(rm -> RoomMembersRes.MemberInfo.builder()
                         .userId(rm.getUserId())
                         .nickname(userMap.get(rm.getUserId()).getNickname())
+                        .profileImageUrl(
+                                userMap.get(rm.getUserId()).getProfileImageUrl()
+                        )
                         .joinedAt(rm.getCreatedAt())
                         .build())
                 .toList();

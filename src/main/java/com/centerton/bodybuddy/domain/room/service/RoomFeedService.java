@@ -160,6 +160,9 @@ public class RoomFeedService {
         return RoomFeedRes.FeedItem.builder()
                 .userId(meal.getUser().getUserId())
                 .nickname(meal.getUser().getNickname())
+                .profileImageUrl(
+                        meal.getUser().getProfileImageUrl()
+                )
                 .mealId(meal.getMealId())
                 .photoUrl(
                         createPhotoUrl(

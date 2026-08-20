@@ -44,6 +44,7 @@ public class RoomListService {
                 .map(m -> MyRoomsRes.RoomInfo.builder()
                         .roomId(m.getRoomId())
                         .roomName(roomMap.get(m.getRoomId()).getRoomName())
+                        .coverImageUrl(roomMap.get(m.getRoomId()).getCoverImageUrl())
                         .joinedAt(m.getCreatedAt())
                         .build())
                 .toList();
