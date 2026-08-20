@@ -12,6 +12,7 @@ import com.centerton.bodybuddy.domain.recommendation.entity.Recommendation;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationDecision;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationDecisionType;
 import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationDish;
+import com.centerton.bodybuddy.domain.recommendation.entity.RecommendationStatus;
 import com.centerton.bodybuddy.domain.recommendation.repository.RecommendationDecisionRepository;
 import com.centerton.bodybuddy.domain.recommendation.repository.RecommendationDishRepository;
 import com.centerton.bodybuddy.domain.recommendation.repository.RecommendationRepository;
@@ -36,6 +37,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CalendarService {
 
+    private static final List<MealStatus> CALENDAR_MEAL_STATUSES = List.of(
+            MealStatus.CONFIRMED,
+            MealStatus.COMPLETED
+    );
+
     private final UserRepository userRepository;
     private final MealNutritionSummaryRepository mealNutritionSummaryRepository;
     private final RecommendationRepository recommendationRepository;
@@ -52,7 +58,7 @@ public class CalendarService {
 
         List<MealNutritionSummary> summaries = mealNutritionSummaryRepository.findDailySummaries(
                 user.getUserId(),
-                List.of(MealStatus.COMPLETED),
+                CALENDAR_MEAL_STATUSES,
                 startUtc,
                 endUtc
         );
@@ -149,15 +155,25 @@ public class CalendarService {
     public MonthlyStatsRes getMonthlyStats(String authorization, YearMonth month) {
         User user = AuthValidator.validateAndGetUser(authorization, userRepository);
 
-        LocalDateTime startUtc = month.atDay(1).atStartOfDay();
-        LocalDateTime endUtc = month.plusMonths(1).atDay(1).atStartOfDay();
+        LocalDate startDate = month.atDay(1);
+        LocalDate endDate = month.plusMonths(1).atDay(1);
+
+        LocalDateTime startUtc = startDate.atStartOfDay();
+        LocalDateTime endUtc = endDate.atStartOfDay();
 
         List<MealNutritionSummary> summaries = mealNutritionSummaryRepository.findDailySummaries(
                 user.getUserId(),
-                List.of(MealStatus.COMPLETED),
+                CALENDAR_MEAL_STATUSES,
                 startUtc,
                 endUtc
         );
+
+        List<Recommendation> recommendations =
+                recommendationRepository.findMonthlyRecommendations(
+                        user.getUserId(),
+                        startDate,
+                        endDate
+                );
 
         BigDecimal totalCalories = summaries.stream()
                 .map(MealNutritionSummary::getNutrition)
@@ -166,20 +182,66 @@ public class CalendarService {
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        long recordedDays = summaries.stream()
-                .map(s -> s.getMeal().getEatenAt().toLocalDate())
-                .distinct()
-                .count();
+        Map<LocalDate, Long> mealCountByDate = summaries.stream()
+                .collect(Collectors.groupingBy(
+                        s -> s.getMeal().getEatenAt().toLocalDate(),
+                        Collectors.counting()
+                ));
+
+        Map<LocalDate, List<Recommendation>> recommendationsByDate =
+                recommendations.stream()
+                        .collect(Collectors.groupingBy(
+                                Recommendation::getRecommendationDate
+                        ));
+
+        List<MonthlyStatsRes.DayStatus> days = mealCountByDate.entrySet()
+                .stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> {
+                    List<Recommendation> dailyRecommendations =
+                            recommendationsByDate.getOrDefault(
+                                    entry.getKey(),
+                                    List.of()
+                            );
+
+                    int selectedCount = (int) dailyRecommendations.stream()
+                            .filter(recommendation ->
+                                    recommendation.getStatus() == RecommendationStatus.SELECTED
+                            )
+                            .count();
+
+                    int unselectedCount = (int) dailyRecommendations.stream()
+                            .filter(recommendation ->
+                                    recommendation.getStatus() == RecommendationStatus.CREATED
+                                            || recommendation.getStatus() == RecommendationStatus.SKIPPED
+                            )
+                            .count();
+
+                    return MonthlyStatsRes.DayStatus.builder()
+                            .date(entry.getKey().toString())
+                            .mealCount(entry.getValue().intValue())
+                            .selectedRecommendationCount(selectedCount)
+                            .unselectedRecommendationCount(unselectedCount)
+                            .build();
+                })
+                .toList();
+
+        int recordedDays = mealCountByDate.size();
 
         BigDecimal averageCalories = recordedDays == 0
                 ? BigDecimal.ZERO
-                : totalCalories.divide(BigDecimal.valueOf(recordedDays), 2, RoundingMode.HALF_UP);
+                : totalCalories.divide(
+                BigDecimal.valueOf(recordedDays),
+                2,
+                RoundingMode.HALF_UP
+        );
 
         return MonthlyStatsRes.builder()
                 .month(month.toString())
                 .totalCalories(totalCalories)
                 .averageCalories(averageCalories)
-                .recordedDays((int) recordedDays)
+                .recordedDays(recordedDays)
+                .days(days)
                 .build();
     }
 }
