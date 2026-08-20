@@ -2,7 +2,6 @@ DELETE FROM meal_reactions;
 
 ALTER TABLE meal_reactions
     DROP INDEX uk_meal_reactions_meal_user_emoji,
-    DROP INDEX idx_meal_reactions_meal,
     ADD COLUMN room_id CHAR(36) NOT NULL AFTER reaction_id,
     ADD INDEX idx_meal_reactions_room_meal (
         room_id,
