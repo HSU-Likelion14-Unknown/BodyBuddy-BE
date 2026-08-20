@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -65,10 +66,10 @@ public class RoomFeedService {
                 getRoomMemberUserIds(roomId);
 
         LocalDateTime startAt =
-                targetDate.atStartOfDay();
+                toUtcStartOfDay(targetDate);
 
         LocalDateTime endAt =
-                targetDate.plusDays(1).atStartOfDay();
+                toUtcStartOfDay(targetDate.plusDays(1));
 
         List<Meal> meals =
                 mealRepository.findSharedRoomFeed(
@@ -170,8 +171,24 @@ public class RoomFeedService {
                         )
                 )
                 .foodNames(foodNames)
-                .eatenAt(meal.getEatenAt())
+                .eatenAt(toKoreaTime(meal.getEatenAt()))
                 .build();
+    }
+
+    private LocalDateTime toUtcStartOfDay(LocalDate date) {
+        return date.atStartOfDay(SERVICE_ZONE_ID)
+                .withZoneSameInstant(ZoneOffset.UTC)
+                .toLocalDateTime();
+    }
+
+    private LocalDateTime toKoreaTime(LocalDateTime utcDateTime) {
+        if (utcDateTime == null) {
+            return null;
+        }
+
+        return utcDateTime.atOffset(ZoneOffset.UTC)
+                .atZoneSameInstant(SERVICE_ZONE_ID)
+                .toLocalDateTime();
     }
 
     private String createPhotoUrl(
